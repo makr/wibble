@@ -1,0 +1,17 @@
+# **Sample index.html.tmpl**
+% dict set response header Content-Type "text/html; charset=utf-8"
+<html><head><title>$uri</title></head><body>
+% set rand [expr {rand()}]
+% if {$rand > 0.5} {
+random=[format %.3f $rand] &gt; 0.5<br/>
+% } else {
+random=[format %.3f $rand] &lt;= 0.5<br/>
+% }
+time/date=[clock format [clock seconds]]<br/>
+milliseconds=[clock milliseconds]<br/>
+clicks=[clock clicks]<br/>
+% if {![dict exists $query noiframe]} {
+<iframe src="/?noiframe" width="100%"/>
+% }
+</body></html>
+
