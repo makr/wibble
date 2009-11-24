@@ -6,7 +6,7 @@ This code is intended to be customized for your application.  Start by changing 
 
 ***Name***
 
-Regarding the name: "Wibble" is similar in sound to "Wub", and http://en.wikipedia.org/wiki/Wibble%|%according to Wikipedia%|%, it is one possible pronunciation of "[www]".
+"Wibble" is similar in sound to "Wub", and according to Wikipedia [http://en.wikipedia.org/wiki/Wibble], it is one possible pronunciation of "[www]".
 
 ***Zone handlers***
 
@@ -65,12 +65,39 @@ Support for configuration options varies between zone handlers.  Zone handlers c
    * '''notfound''': Send 404.
 
 ----
-**TODO**
+**TODO/Wish list**
 
-   * '''Character encoding''': Wibble currently doesn't support character encodings (neither Accept: nor Content-Type: charset); it's hard-coded to only use ISO8859-1.  It should at least support UTF-8.
-   * '''Content type''': The Wibble '''static''' file server doesn't send Content-Type:, so the client has to guess.  (I heard a rumor that [Internet Explorer] always ignores Content-Type: and guesses from the extension anyway.)  I think a '''contenttype''' zone handler might be able to fill the gap, but I'm not sure what heuristics it should use to detect the type.
-   * '''Zone handlers''': I should write more zone handlers for sessions, Content-Type:, etc.  Maybe they should be collected on a separate page of this Wiki.
-   * '''Others?''': Insert feature request here.
+***Character encoding***
+
+Wibble currently doesn't support character encodings (neither Accept: nor Content-Type: charset); it's hard-coded to only use ISO8859-1.  It should at least support UTF-8.
+
+I think the zone handlers should be able to encode their responses however they like, so long as they correctly identify the encoding, then a general facility can convert encodings if necessary.  Or I could standardize on UTF-8, but this becomes a problem when serving files from disk which may not be UTF-8.  If the client will accept ISO8859-1 and the file is in ISO8859-1, it doesn't make sense to read the file, convert it to UTF-8, convert it back to ISO8859-1, then send it.  Just use [chan copy].
+
+By the way: I don't like how HTTP crams charset into the Content-Type: header; I'd rather it have a separate header, so that I can parse and update it more easily.  There's a lot not to like about HTTP. :^)
+
+***Content type***
+
+The Wibble '''static''' file server doesn't send Content-Type:, so the client has to guess.  (I heard a rumor that [Internet Explorer] always ignores Content-Type: and guesses from the extension anyway.)  I think a '''contenttype''' zone handler might be able to fill the gap, but I'm not sure what heuristics it should use to detect the type.
+
+[makr] (2009-11-19): A pure-[Tcl] solution could employ [fumagic] ('''fileutil::magic''').  [tmag] on the other hand is an [extension] built on top of ''libmagic'' (only available for [Unix] so far).
+
+[AMG]: Sounds good, thanks for the pointer.  So that's two possible approaches, and I can think of a third one: file extension matching.  Since zones stack, it's possible (but untested) to override '''contenttype''' (or its arguments) for individual files, by declaring single-file zones.  Anyway, I might try implementing all three, once I have made a separate Wiki page for extra zone handlers.
+
+***Zone handlers***
+
+I should write more zone handlers for sessions, Content-Type:, etc.  This page is getting fairly long, so they'll be collected on a separate page of this Wiki.  Also the current zone handlers are very bare-bones, particularly '''dirlist''', and maybe could stand to be improved.  Originally I wrote them to be as short and simple as possible so that they clearly demonstrate the concept without being cluttered with features.
+
+***Caching***
+
+I'm not necessarily thinking of caching entire pages; I wonder if I can be a bit more general than that.  Perhaps I cache zone handler outcomes, using the incoming request as part of the key.  (See [memoizing].)
+
+One tricky part is identifying the rest of the key, that is to say, all other inputs that play a part in determining the outcome.  A closely related issue is identifying the irrelevant parts of the request.  For example, if the socket name affects the outcome, there's no point in caching, since that changes all the time.  Except for debugging, I can't think of a reason why the socket name would matter.  Likewise a dependency on the peer's network name would impede caching, and sometimes that dependency exists legitimately.
+
+I have to be very careful with this one, because caching can incur overhead that exceeds the cost of recalculating from scratch every time.  In my line of work (real-time simulation), this is nearly always the case.  For that reason I don't want to experiment with caching until performance becomes a problem and other optimizations cease to bear fruit.
+
+***Others?***
+
+Insert feature request here.
 
 ----
 **Sample index.html.tmpl**
