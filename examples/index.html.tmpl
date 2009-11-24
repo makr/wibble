@@ -1,5 +1,5 @@
 # **Sample index.html.tmpl**
-% dict set response header Content-Type "text/html; charset=utf-8"
+% dict set response header Content-Type text/html
 <html><head><title>$uri</title></head><body>
 % set rand [expr {rand()}]
 % if {$rand > 0.5} {

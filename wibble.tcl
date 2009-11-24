@@ -1,4 +1,9 @@
 #!/bin/sh
+#
+# Wibble - a pure-Tcl Web server.  http://wiki.tcl.tk/23626
+# Copyright 2009 Andy Goth.  mailto:unununium/at/aircanopy/dot/net
+# Available under the Tcl/Tk license.  http://tcl.tk/software/tcltk/license.html
+#
 # The next line restarts with tclsh.\
 exec tclsh "$0" ${1+"$@"}
 
@@ -13,7 +18,7 @@ namespace eval wibble {
 # Echo request dictionary.
 proc wibble::vars {request response} {
     dict set response status 200
-    dict set response header content-type "text/html; charset=utf-8"
+    dict set response header content-type text/html
     dict set response content {<html><body><table border="1">}
     dict for {key val} $request {
         if {$key in {header query}} {
@@ -68,7 +73,7 @@ proc wibble::dirlist {request response} {
         } elseif {[file readable $fspath]} {
             # If the directory is readable, generate a listing.
             dict set response status 200
-            dict set response header content-type "text/html; charset=utf-8"
+            dict set response header content-type text/html
             dict set response content <html><body>
             foreach elem [concat [list ..]\
                     [lsort [glob -nocomplain -tails -directory $fspath *]]] {
@@ -79,7 +84,7 @@ proc wibble::dirlist {request response} {
         } else {
             # But if it isn't readable, generate a 403.
             dict set response status 403
-            dict set response header content-type "text/plain; charset=utf-8"
+            dict set response header content-type text/plain
             dict set response content Forbidden\n
             sendresponse $response
         }
@@ -91,7 +96,7 @@ proc wibble::template {request response} {
     dict with request {
         if {[file readable $fspath.tmpl]} {
             dict set response status 200
-            dict set response header content-type "text/plain; charset=utf-8"
+            dict set response header content-type text/plain
             dict set response content ""
             set chan [open $fspath.tmpl]
             applytemplate "dict append response content" [read $chan]
@@ -119,7 +124,7 @@ proc wibble::static {request response} {
 # Send a 404.
 proc wibble::notfound {request response} {
     dict set response status 404
-    dict set response header content-type "text/plain; charset=utf-8"
+    dict set response header content-type text/plain
     dict set response content "can't find [dict get $request uri]\n"
     sendresponse $response
 }
@@ -147,10 +152,14 @@ proc wibble::applytemplate {command template} {
 # Get a line of data from a channel.
 proc wibble::getline {chan} {
     while {1} {
-        if {[chan pending input $chan] > 4096} {
-            error "line length greater than 4096"
-        } elseif {[chan gets $chan line] >= 0} {
+        if {[chan gets $chan line] >= 0} {
             return $line
+        } elseif {[chan pending input $chan] > 4096} {
+            if {[chan gets $chan line] >= 0} {
+                return $line
+            } else {
+                error "line length greater than 4096"
+            }
         } elseif {[chan eof $chan]} {
             chan close $chan
             return -level [info level]
@@ -175,15 +184,6 @@ proc wibble::getblock {chan size} {
             yield
         }
     }
-}
-
-# Version of [file join] that doesn't do ~user substitution and ignores leading
-# slashes, for all elements except the first.
-proc wibble::filejoin {args} {
-    for {set i 1} {$i < [llength $args]} {incr i} {
-        lset args $i ./[lindex $args $i]
-    }
-    string map {./ ""} [file join {*}$args]
 }
 
 # Decode hexadecimal URL encoding.
@@ -280,7 +280,7 @@ proc wibble::getresponse {request} {
     set state [list $request [dict create status 500 content "Zone error\n"]]
     dict set fallback status 501
     dict set fallback content "not implemented: [dict get $request uri]\n"
-    dict set fallback header content-type "text/plain; charset=utf-8"
+    dict set fallback header content-type text/plain
 
     # Process all zones.
     dict for {prefix handlers} $zones {
@@ -308,8 +308,8 @@ proc wibble::getresponse {request} {
                 dict set request suffix [string range $path\
                                         [string length $prefix] end]
                 if {[dict exists $options root]} {
-                    dict set request fspath [filejoin\
-                        [dict get $options root] [dict get $request suffix]]
+                    dict set request fspath\
+                        [dict get $options root]/[dict get $request suffix]
                 }
                 set request [dict merge $request $options]
 

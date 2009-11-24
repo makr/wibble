@@ -259,10 +259,25 @@ see examples/alter-getline.tcl
 
 [AMG]: I don't remember!  Does anyone around here know why someone would want to use ISO8859-1 in this situation?
 
+[AMG]: I finally figured it out.  Character sets other than ISO8859-1 require a proper charset parameter in the Content-Type response header.  Also when there is an Accept request header, the server should try its best to honor it.  I didn't want to deal with any of this, so I stuck with ISO8859-1.  Support for other character sets is a possible future enhancement.
+
+''The "charset" parameter is used with some media types to define the character set (section 3.4) of the data. When no explicit charset parameter is provided by the sender, media subtypes of the "text" type are defined to have a default charset value of "ISO-8859-1" when received via HTTP. Data in character sets other than "ISO-8859-1" or its subsets MUST be labeled with an appropriate charset value. [http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1]''
+
 ----
 [MAKR] (2009-10-12): I just stumbled over this nice little thing ... I'd like to know what the license of this code is? Would it be possible to categorize it under the same license as Tcl's?
 
 [AMG]: Sure, no problem.  Wibble uses the same license as Tcl.
+
+----
+[jcw] 2009-11-11: Thanks Colin for mentioning this page. Wow, Andy, this is a fascinating server - and a great way for me to dive into new 8.6 stuff...
+
+I was wondering why you need to pass around both requests and responses separately. Couldn't each newly-created response dict have the request as one of its entries? The same request would then be shared by each tentative response you create. If responses are derived from other responses (not sure that happens), the original request would be in there, but buried a bit deeper.
+
+[AMG]: Thanks for the words of encouragement!  Tonight I will contemplate the request/response dichotomy.  For now, I just noticed that wibble::filejoin probably doesn't not work right when a directory name has a trailing dot.  For example "foo./bar" might mutate into "foobar".  I'll verify this as well.
+
+[AMG]: Updates: I fixed wibble::filejoin by removing it--- it's actually not needed.  I incorporated [APN]'s wibble::getline.  I put in some license information.
+
+As for keeping request and response separate, I think this makes the zone handlers easier to write.  They receive two arguments, the input request dict (which tells them what to do) and the output response dict (which they update).  What benefit is there to merging the two arguments?  I want to keep the dict structure as flat as I can, but I also want to avoid collisions between the request and response dicts.  The simplest way to accomplish both is to make these two be separate variables.
 
 ----
 **See also**
@@ -271,7 +286,4 @@ see examples/alter-getline.tcl
    * [Wub]
    * [DustMote]
 
-----
-!!!!!!
-%| [Category Webserver] |%
-!!!!!!
+<<categories>>Category Webserver
