@@ -265,7 +265,7 @@ proc wibble::getrequest {chan peerhost peerport} {
         } else {
             # Receive non-chunked request body.
             chan configure $chan -translation binary
-            set data [getline $chan [dict get $request header content-length]]
+            set data [getblock $chan [dict get $request header content-length]]
             chan configure $chan -translation crlf
         }
         dict set request content $data

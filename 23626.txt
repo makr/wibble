@@ -65,6 +65,14 @@ Support for configuration options varies between zone handlers.  Zone handlers c
    * '''notfound''': Send 404.
 
 ----
+**TODO**
+
+   * '''Character encoding''': Wibble currently doesn't support character encodings (neither Accept: nor Content-Type: charset); it's hard-coded to only use ISO8859-1.  It should at least support UTF-8.
+   * '''Content type''': The Wibble '''static''' file server doesn't send Content-Type:, so the client has to guess.  (I heard a rumor that [Internet Explorer] always ignores Content-Type: and guesses from the extension anyway.)  I think a '''contenttype''' zone handler might be able to fill the gap, but I'm not sure what heuristics it should use to detect the type.
+   * '''Zone handlers''': I should write more zone handlers for sessions, Content-Type:, etc.  Maybe they should be collected on a separate page of this Wiki.
+   * '''Others?''': Insert feature request here.
+
+----
 **Sample index.html.tmpl**
 
 ======
@@ -278,6 +286,10 @@ I was wondering why you need to pass around both requests and responses separate
 [AMG]: Updates: I fixed wibble::filejoin by removing it--- it's actually not needed.  I incorporated [APN]'s wibble::getline.  I put in some license information.
 
 As for keeping request and response separate, I think this makes the zone handlers easier to write.  They receive two arguments, the input request dict (which tells them what to do) and the output response dict (which they update).  What benefit is there to merging the two arguments?  I want to keep the dict structure as flat as I can, but I also want to avoid collisions between the request and response dicts.  The simplest way to accomplish both is to make these two be separate variables.
+
+[APN]: Updates: fixed non-chunked form handling (getline should have been getblock). I now use wibble in place of [tclhttpd] in [BowWow]. Smaller and more malleable.
+
+[AMG]: I put that bug there to test your vision. :^)  Actually I bet it crashed the first time you did a non-chunked post.  I was so busy testing chunked transfers that I forgot to test non-chunked!  Also, thanks for taking the leap; I would be delighted if you shared your experiences using Wibble.  I haven't actually used it for anything yet, even though I had plans.
 
 ----
 **See also**
