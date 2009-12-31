@@ -361,6 +361,9 @@ As for keeping request and response separate, I think this makes the zone handle
 [AMG]: MS, thanks for your fix.  I reverted my workaround, since it's no longer needed.  New topic: Why does [[namespace code]] add a frame to the C stack?
 
 ----
+[AMG]: For the last couple days, I've been working on parsing the HTTP headers into lists and dicts and such.  This is actually very complicated because the HTTP header grammar is an unholy abomination, and that's only counting the part that's documented!  I'll post my work soon, but it's not going to be pretty.  Also I hope to add support for file uploads through POST (not just PUT), since that is required for my project.  This will also add the complexity of MIME-style multipart messages, possibly nested.  It all makes me want to vomit.  HTTP works better as a human language than as a computer language, like it was optimized for producing deceptively simple examples, not genuinely simple code.  To paraphrase Dan Bernstein [http://cr.yp.to/qmail/guarantee.html]: "There are two types of interfaces in the world of computing: good interfaces and user interfaces."
+
+----
 **See also**
 
    * [mini demo webserver]
