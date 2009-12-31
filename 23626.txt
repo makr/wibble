@@ -6,7 +6,7 @@ This code is intended to be customized for your application.  Start by changing 
 
 ***Name***
 
-"Wibble" is similar in sound to "Wub", and according to Wikipedia [http://en.wikipedia.org/wiki/Wibble], it is one possible pronunciation of "[www]".
+"Wibble" is similar in sound to "Wub", and according to the Jargon File [http://www.catb.org/jargon/html/W/wibble.html], it is one possible pronunciation of "[www]".
 
 ***Zone handlers***
 
@@ -77,7 +77,7 @@ By the way: I don't like how HTTP crams charset into the Content-Type: header; I
 
 ***Content type***
 
-The Wibble '''static''' file server doesn't send Content-Type:, so the client has to guess.  (I heard a rumor that [Internet Explorer] always ignores Content-Type: and guesses from the extension anyway.)  I think a '''contenttype''' zone handler might be able to fill the gap, but I'm not sure what heuristics it should use to detect the type.
+The Wibble '''static''' file server doesn't send Content-Type:, so the client has to guess.  ([Internet Explorer] second-guesses the text/plain Content-Type: anyway.)  I think a '''contenttype''' zone handler might be able to fill the gap, but I'm not sure what heuristics it should use to detect the type.
 
 [makr] (2009-11-19): A pure-[Tcl] solution could employ [fumagic] ('''fileutil::magic''').  [tmag] on the other hand is an [extension] built on top of ''libmagic'' (only available for [Unix] so far).
 
@@ -338,6 +338,7 @@ As for keeping request and response separate, I think this makes the zone handle
 
 [AMG]: That's (part of) what '''rawquery''' is for.  (I admit that '''rawquery''' isn't easy to pick apart.)  Since I anticipate that queries will most frequently be accessed like a [dict], the '''query''' element of the request dictionary is a dict.  If it turns out that like-named form elements are frequently needed, I can make a '''listquery''' or similar element that like '''query''' except constructed using [[[lappend]]] instead of [[[dict set]]].  Both would be compatible with [[[foreach]]] and [[[dict get]]].  Because of this compatibility, I could also make '''query''' itself be a key-value list instead of a dict.  However, this would result in a copy of '''query''' shimmering to dict every time [[[dict get]]] is used to get a query variable.  Suggestions?
 
+[jcw] - ''Just one... fix [dict] so it keeps the data structure as a list, and stores the hash somewhere else ;)''
 ----
 **See also**
 
