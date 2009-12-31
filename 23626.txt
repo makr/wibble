@@ -321,6 +321,8 @@ As for keeping request and response separate, I think this makes the zone handle
 ----
 [AMG]: [MS], I am curious about your edit (changing wibble::handle to use [variable] instead of a namespace qualifier).  I had thought that using namespace qualifiers is faster when the variable only gets used once or twice.  Is there something I'm missing?
 
+[MS] Try sourcing wibble from a different namespace: ''namespace eval foo source /path/to/wibble''. The new version works, the old one doesn't. Since 8.5 [variable] is bcc'ed and does not incur the old perf penalty.
+
 ----
 **See also**
 
