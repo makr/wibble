@@ -343,6 +343,13 @@ As for keeping request and response separate, I think this makes the zone handle
 [AMG]: I'm not entirely sure how that would work.  Using [[dict set]] should overwrite existing elements, so I would have to use [[lappend]] in order to support multiple like-named elements.  But later if I access '''query''' using [[dict get]], a temporary dict-type copy would be constructed.  You're suggesting (tongue-in-cheek) that the hash table not be temporary but somehow get attached to the list-type [Tcl_Obj] for future use by [[dict]].  [Cloverfield] has ideas in that direction, but [Tcl] doesn't work that way.  Unless... perhaps the list and dict types can be partially unified to reduce the cost of shimmering.  It would be like a free trade treaty between neighboring nations. :^)  Conceptually, that would make sense because list and dict are so similar, especially since dict was changed (in Tcl 8.5 alpha) to preserve element order.  Practically, there are obstacles, for example changing or extending the C API.
 
 ----
+[APN]: When run against Tcl built against CVS head as of 12/18/2009, wibble fails with the error "invalid command name process". The fix is to change the coroutine call in wibble::accept to pass in [[[namespace current]]]::process instead of process. The question is whether this change in coroutine command in how it resolves names was intentional or not.
+
+[AMG]: That's odd.  [[namespace current]]::process works fine, but [[[namespace code] process]] does not.  When I try the latter, I get "cannot yield: C stack busy".
+
+[APN] The current coroutine docs state '''At the point when command is called, the current namespace will be the global namespace and there will be no stack frames above it (in the sense of upvar and uplevel). However, which command to call will be determined in the namespace that the coroutine command was called from.''' Based on this I would presume the original code should have worked as well (without qualifiers) since the coroutine command should have resolved '''process''' to be '''wibble::process''' based on the namespace it was called from. This behaviour seems to have changed very recently, perhaps the documentation has not been updated?
+
+----
 **See also**
 
    * [mini demo webserver]
