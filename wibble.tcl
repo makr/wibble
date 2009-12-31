@@ -467,7 +467,7 @@ proc wibble::process {socket peerhost peerport} {
 # Accept an incoming connection.
 proc wibble::accept {socket peerhost peerport} {
     chan event $socket readable [namespace code $socket]
-    coroutine $socket [namespace current]::process $socket $peerhost $peerport
+    coroutine $socket process $socket $peerhost $peerport
 }
 
 # Listen for incoming connections.

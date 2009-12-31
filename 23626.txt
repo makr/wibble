@@ -345,9 +345,20 @@ As for keeping request and response separate, I think this makes the zone handle
 ----
 [APN]: When run against Tcl built against CVS head as of 12/18/2009, wibble fails with the error "invalid command name process". The fix is to change the coroutine call in wibble::accept to pass in [[[namespace current]]]::process instead of process. The question is whether this change in coroutine command in how it resolves names was intentional or not.
 
-[AMG]: That's odd.  [[namespace current]]::process works fine, but [[[namespace code] process]] does not.  When I try the latter, I get "cannot yield: C stack busy".
+[AMG]: That's odd.  [[namespace current]]::process works fine, but [[[namespace code] process]] does not.  When I try the latter, I get "cannot yield: C stack busy". 
+
+[MS] (after today's fix, but it shouldn't matter)
+    
+    % proc a {} {yield; return hello}
+    % coroutine foo {*}[namespace code a]
+    % foo
+    hello
 
 [APN] The current coroutine docs state '''At the point when command is called, the current namespace will be the global namespace and there will be no stack frames above it (in the sense of upvar and uplevel). However, which command to call will be determined in the namespace that the coroutine command was called from.''' Based on this I would presume the original code should have worked as well (without qualifiers) since the coroutine command should have resolved '''process''' to be '''wibble::process''' based on the namespace it was called from. This behaviour seems to have changed very recently, perhaps the documentation has not been updated?
+
+[MS] 2009-12-19 looks like [[bug #2917627]] [https://sourceforge.net/tracker/?func=detail&atid=110894&aid=2917627&group_id=10894], fixed in head. [APN] Confirmed.
+
+[AMG]: MS, thanks for your fix.  I reverted my workaround, since it's no longer needed.  New topic: Why does [[namespace code]] add a frame to the C stack?
 
 ----
 **See also**
