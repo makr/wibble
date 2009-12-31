@@ -319,6 +319,9 @@ As for keeping request and response separate, I think this makes the zone handle
 [AMG]: I put that bug there to test your vision. :^)  Actually I bet it crashed the first time you did a non-chunked post.  I was so busy testing chunked transfers that I forgot to test non-chunked!  Also, thanks for taking the leap; I would be delighted if you shared your experiences using Wibble.  I haven't actually used it for anything yet, even though I had plans.
 
 ----
+[AMG]: [MS], I am curious about your edit (changing wibble::handle to use [variable] instead of a namespace qualifier).  I had thought that using namespace qualifiers is faster when the variable only gets used once or twice.  Is there something I'm missing?
+
+----
 **See also**
 
    * [mini demo webserver]

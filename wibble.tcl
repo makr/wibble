@@ -209,7 +209,8 @@ proc wibble::sendresponse {response} {
 
 # Register a zone handler.
 proc wibble::handle {zone command args} {
-    dict lappend wibble::zones $zone [list $command $args]
+    variable zones
+    dict lappend zones $zone [list $command $args]
 }
 
 # Get an HTTP request from a client.

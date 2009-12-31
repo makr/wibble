@@ -30,4 +30,3 @@ proc wibble::getline {chan} {
         }
     }
 }
-

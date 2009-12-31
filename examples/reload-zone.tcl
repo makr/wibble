@@ -10,4 +10,3 @@ proc reload {request response} {
     wibble::sendresponse $response
 }
 wibble::handle /reload reload scripts [list [info script]]
-
