@@ -95,6 +95,14 @@ One tricky part is identifying the rest of the key, that is to say, all other in
 
 I have to be very careful with this one, because caching can incur overhead that exceeds the cost of recalculating from scratch every time.  In my line of work (real-time simulation), this is nearly always the case.  For that reason I don't want to experiment with caching until performance becomes a problem and other optimizations cease to bear fruit.
 
+***SSL***
+
+I really don't know how this is done...
+
+***File uploads***
+
+I'll be needing this for a project, but I haven't done any research on it yet.
+
 ***Others?***
 
 Insert feature request here.
