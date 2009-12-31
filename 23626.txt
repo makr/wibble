@@ -323,6 +323,13 @@ As for keeping request and response separate, I think this makes the zone handle
 
 [MS] Try sourcing wibble from a different namespace: ''namespace eval foo source /path/to/wibble''. The new version works, the old one doesn't. Since 8.5 [variable] is bcc'ed and does not incur the old perf penalty.
 
+[AMG]: Thanks!  Good to know. :^)
+
+----
+[jnc]: In regards to multiple form elements of the same name, it comes in very hand when dealing with lists of items. Two examples: you are editing a parent and you have a table below containing <input name="child_id" type="hidden"/> <input name="child_name"/> <input name="child_dob"/>. When you get the data in your web app, it typically is a list. Therefore you can loop through the data easily. Now, another very helpful situation is when using list data again, and this time with checkboxes to select elements. Say you have a list of emails from your pop3 box that you are previewing the From/Subject for. The idea is you are going to delete these messages before downloading them into your mail program. Again, you have a list: <input type="checkbox" name="delete_email_ids" value="$email_id"/>. Now, with checkboxes, you only get the data submitted via the web browser if the item is checked. So, in the end, you get a list of only email_id's that the user wants to delete. The programmer can easily do: foreach id $delete_email_ids { ... }
+
+[AMG]: That's (part of) what '''rawquery''' is for.  (I admit that '''rawquery''' isn't easy to pick apart.)  Since I anticipate that queries will most frequently be accessed like a [dict], the '''query''' element of the request dictionary is a dict.  If it turns out that like-named form elements are frequently needed, I can make a '''listquery''' or similar element that like '''query''' except constructed using [[[lappend]]] instead of [[[dict set]]].  Both would be compatible with [[[foreach]]] and [[[dict get]]].  Because of this compatibility, I could also make '''query''' itself be a key-value list instead of a dict.  However, this would result in a copy of '''query''' shimmering to dict every time [[[dict get]]] is used to get a query variable.  Suggestions?
+
 ----
 **See also**
 
