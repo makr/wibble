@@ -338,7 +338,10 @@ As for keeping request and response separate, I think this makes the zone handle
 
 [AMG]: That's (part of) what '''rawquery''' is for.  (I admit that '''rawquery''' isn't easy to pick apart.)  Since I anticipate that queries will most frequently be accessed like a [dict], the '''query''' element of the request dictionary is a dict.  If it turns out that like-named form elements are frequently needed, I can make a '''listquery''' or similar element that like '''query''' except constructed using [[[lappend]]] instead of [[[dict set]]].  Both would be compatible with [[[foreach]]] and [[[dict get]]].  Because of this compatibility, I could also make '''query''' itself be a key-value list instead of a dict.  However, this would result in a copy of '''query''' shimmering to dict every time [[[dict get]]] is used to get a query variable.  Suggestions?
 
-[jcw] - ''Just one... fix [dict] so it keeps the data structure as a list, and stores the hash somewhere else ;)''
+[jcw] - Just one... fix [dict] so it keeps the data structure as a list, and stores the hash somewhere else ;)
+
+[AMG]: I'm not entirely sure how that would work.  Using [[dict set]] should overwrite existing elements, so I would have to use [[lappend]] in order to support multiple like-named elements.  But later if I access '''query''' using [[dict get]], a temporary dict-type copy would be constructed.  You're suggesting (tongue-in-cheek) that the hash table not be temporary but somehow get attached to the list-type [Tcl_Obj] for future use by [[dict]].  [Cloverfield] has ideas in that direction, but [Tcl] doesn't work that way.  Unless... perhaps the list and dict types can be partially unified to reduce the cost of shimmering.  It would be like a free trade treaty between neighboring nations. :^)  Conceptually, that would make sense because list and dict are so similar, especially since dict was changed (in Tcl 8.5 alpha) to preserve element order.  Practically, there are obstacles, for example changing or extending the C API.
+
 ----
 **See also**
 
