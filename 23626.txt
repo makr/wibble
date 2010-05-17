@@ -370,10 +370,84 @@ As for keeping request and response separate, I think this makes the zone handle
 [jcw] - No worries. I can save you some time though: the links I mentioned don't use TclOO, so you can ignore them :) - I just think by now it has become a good option to consider. I'll try some things out.
 
 ----
+[dzach] 2010-05-12: I've encountered an odd problem with proc ''getblock'', which hangs wibble when sending a POST request from an IE8 in Windows XP: the ''append chunk $chunklet'' line seems to be failing to initialize variable ''chunk''. IE8, in my configuration, sends the POST content in two packets, the first of which is empty (size is 0). When this happens wibble hangs for ever. Firefox sends the POST content in one packet and the problem does not appear. Initializing ''chunk'' outside the ''while'' loop with: ''set chunk ""'', solves the problem. In the test setup, Wibble runs on Linux with Tcl8.6b1.2.
+
+[AMG]: That is very odd.  I should get IE8 for myself to test, but I don't have it right this minute.  Two-argument [[[append]]] always creates the variable if it doesn't exist, regardless of its second argument.  In tclExecute.c, doStoreStk is part of the implementation of compiled append, and it calls TclObjLookupVarEx() with the "create" flags set.h.  For the sake of argument, let's say that [[append]] is buggy and fails to create chunk when chunklet is empty.  $size should be nonzero in this case, and [[chan eof $chan]] is false because IE8 hasn't closed the channel yet, so [[[yield]]] is executed.  Nowhere in this code path does chunk's existence matter, and there's no reason why pre-creating chunk would have an effect.  The little information available suggests there's a bug in Tcl, but I can't say for sure.  Please put in some debug prints to stderr.  In particular, I want prints before and after the yield, to see which branch of the [[[if]]] is being taken and whether the coroutine is ever resumed.  Do this both without and with your ''set chunk ""'' workaround.  Oh, another question: When Wibble hangs, does it take up 0% or 100% CPU time?
+
+[dzach]: The tests run with utf-8 encoding. I noticed that when I insert the ''puts stderr $chunklet'' line, the problem does not appear. If I take out that line, I reproduce the problem. CPU load is 100%. Here come the tests:
+
+ # test proc
+ proc ::serv::getblock {chan size} {
+     puts stderr size=$size
+     while {1} {
+        set chunklet [chan read $chan $size]
+        puts stderr "{$size - [string length $chunklet]}"
+        set size [expr {$size - [string length $chunklet]}]
+        append chunk $chunklet
+        if {$size == 0} {
+          puts stderr "return size==0"
+          return $chunk
+        } elseif {[chan eof $chan]} {
+          chan close $chan
+          puts stderr "return eof"
+          return -level [info level]
+        } else {
+          puts stderr "before yield"
+          yield
+          puts stderr "after yield"
+        }
+     }
+ }
+
+ # output
+ size=56
+ {56 - 0}
+ before yield
+ after yield
+ {56 - 56}
+
+ # test proc (work-around)
+ proc ::serv::getblock {chan size} {
+     puts stderr size=$size
+     set chunk ""
+     while {1} {
+        set chunklet [chan read $chan $size]
+        puts stderr "{$size - [string length $chunklet]}"
+        puts stderr chunklet=$chunklet
+        set size [expr {$size - [string length $chunklet]}]
+        append chunk $chunklet
+        if {$size == 0} {
+          puts stderr "return size==0"
+          return $chunk
+        } elseif {[chan eof $chan]} {
+          chan close $chan
+          puts stderr "return eof"
+          return -level [info level]
+        } else {
+          puts stderr "before yield"
+          yield
+          puts stderr "after yield"
+        }
+     }
+ }
+
+ # output (work-around)
+ size=56
+ {56 - 0}
+ chunklet=
+ before yield
+ after yield
+ {56 - 56}
+ chunklet=name=&geometry=38.079226,23.930992&description=&dtstart=
+ chunk=name=&geometry=38.079226,23.930992&description=&dtstart=
+ return size==0
+
+
+----
 **See also**
 
    * [mini demo webserver]
    * [Wub]
    * [DustMote]
 
-<<categories>>Category Webserver
+<<categories>> Webserver
