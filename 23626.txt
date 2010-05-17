@@ -377,7 +377,7 @@ As for keeping request and response separate, I think this makes the zone handle
 [dzach]: The tests run with utf-8 encoding. I noticed that when I insert the ''puts stderr $chunklet'' line, the problem does not appear. If I take out that line, I reproduce the problem. CPU load is 100%. Here come the tests:
 
  # test proc
- proc ::serv::getblock {chan size} {
+ proc ::wibble::getblock {chan size} {
      puts stderr size=$size
      while {1} {
         set chunklet [chan read $chan $size]
@@ -407,7 +407,7 @@ As for keeping request and response separate, I think this makes the zone handle
  {56 - 56}
 
  # test proc (work-around)
- proc ::serv::getblock {chan size} {
+ proc ::wibble::getblock {chan size} {
      puts stderr size=$size
      set chunk ""
      while {1} {
@@ -442,7 +442,25 @@ As for keeping request and response separate, I think this makes the zone handle
  chunk=name=&geometry=38.079226,23.930992&description=&dtstart=
  return size==0
 
+[AMG]: I created a simple method="post" form, installed IE8, and submitted data several times.  IE8 always sent the full form data as a single packet, with no incomplete or zero-sized reads.  Is there anything special about your form that's making IE8 do what it does?  I'm running the Tcl CVS HEAD compiled earlier today (12 May 2010, ChangeLog revision 1.5108), on [Slackware] 13.0.  How about you?
 
+Also, please explain why you stated that you used UTF-8 encoding.  At present, Wibble is only designed to work with ISO8859-1, because it doesn't have the smarts to figure out what encodings are acceptable to the client, and ISO8859-1 is the legal fallback in that case.  (I have a project to fix this, but it's stalled due to lack of time.)  How is it that you're using UTF-8?
+
+If simply [puts]'ing the value of $chunklet makes the problem go away, most likely there is a Tcl bug.  Please explore this a little more.  What happens if you take the value of $chunklet and ignore it?  For example, "list $chuklet".  If adding that makes the problem go away, something is definitely going wacky under the hood, and you should file a bug report.  Or maybe it's the puts that's having an effect, and it doesn't matter what text is being printed.  Again, that's a Tcl problem, since the output channel is unrelated to network communication with the client.
+
+100% CPU load suggests that [[[chan read]]] is returning empty string, yet the channel is still readable and [[[chan event]]] keeps calling into the [coroutine].  That doesn't make sense to me.
+
+I see one more oddity I can't explain.  Your debug print shows geometry to be "38.079226,23.930992", yet both Firefox 3.6.3 and IE8 encode this as "38.079226%2C23.930992".  What's going on here?  Why isn't your comma also encoded?
+
+By the way, this page is getting too long for my liking.  I wish some benevolent [wikignomes] would clean it up for me! :^)
+
+[dzach]: Wibble, in my tests, substitutes a hand crafted -for speed- web server, and runs on a Kubuntu (2.6.32-22 kernel) with tcl from CVS HEAD (changelog 1.5098/Sat May  1 11:20:12 2010). IE8 is on the same machine running windows XP in a Sun's VirtualBox. 
+
+The POST is sent using a typical javascript AJAX XMLHttpRequest: `req.setRequestHeader("Content-type", "application/x-www-form-urlencoded; charset=utf-8")`. In my narrow scope application, Wibble serves UTF encoded (mostly dynamic) content (in Greek) and user POSTed submissions get decoded inside a modified `wibble::process` using `encoding convertto UTF-8 [[dict get $response content]]` (could as well do it outside Wibble, since all this is done after `getblock` finishes reading the channel). I suspect UTF-8 might have something to do with the problem. 
+
+The POST content send by the browser using AJAX is encoded with javascript's ''encodeURI()'' which leaves some characters (, / ? : @ & = + $ #) unencoded. I'll check if something is missing or if changing this makes a difference. I'll also try to run IE8 on another machine using a native windows XP installation.
+
+(A little later): IE8 hangs the server from a native XP installation too. Changing the ''encodeURI'' to ''encodeURIComponent'' (which encodes comma too) has no effect to the result. Away from the UTF issue, it seems that the problem is cured as soon as ''chunklet'' gets "stringified". I guess it would be worth while to test if ''chan read'' returns a string type when it reads nothing. Having said that, initializing ''chunklet'' instead of ''chunk'' doesn't help, so my guessing might be wrong.
 ----
 **See also**
 
