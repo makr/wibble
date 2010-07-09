@@ -479,11 +479,51 @@ return size==0
 
 Tonight I plan to cobble together a HTTP client that will split its POSTs over two packets, just to see if this really is the cause of the problem.
 
+[AMG]: Looks like I haven't found time to do this, yet.
+
+----
+[AMG]: I found this project by [JCW] which uses Wibble: [http://news.jeelabs.org/2010/03/02/jeemon-as-web-server/] [http://cafe.jeelabs.net/sw/jeemon/]
+
+----
+[AMG]: This page needs refactoring!  It's getting far too large.  Let's see, what's news...  [AGB] wrote [WebSocket], which is an add-on to Wibble.  I'd like to research it more thoroughly and see if I can better integrate it.  Last Christmas or so I wrote a [[deheader]] proc that attempts to not only split the header into lists but also break the elements into lists and dicts.  The main thing holding me back from posting it is its complexity; I'd like to find a way to trim it down.  At the moment it's 87 lines replacing what used to be 9 lines.  [[deheader]] was the first step in my quest to support file uploads; I need to slay the multipart [MIME] dragon before I can declare victory.  Maybe PUT too.  Also I need to do some work with content-type: and accept:, including mapping between the encoding names used by HTTP and Tcl.  All that qvalue garbage will be interesting to sort out.  [APN] has made some customizations to Wibble in [BowWow], which I should consider for inclusion.  Earlier today I changed the way [[nexthandler]] and [[sendresponse]] work; instead of [[[return] -level]], they do [[return -code]] with custom codes caught by [[[try]]].  That works better.  Hmm, [JCW] earlier suggested I research [TclOO]; I did some reading on that front.  For now I think I'll just keep everything as lists and dicts, rather than making objects.
+
+[bch]: AMG -- put up a [fossil] repo and let others help share the load.
+
+[AMG]: Maybe someday, but not while I'm in the middle of a major edit.
+
+I'm making good progress on parsing headers.  The regexps are quite hairy due to handling quotes and backslashes, but they pass all my tests so far.  Again, I'd really like to find a way to unify the headers; right now there's a fair bit of duplication between the routines that handle each of the following:
+
+   * Cache-Control, Pragma: key=val,key=val list
+   * Connection, Content-Encoding, Content-Langauge, If-Match, If-None-Match, Trailer, Upgrade, Vary, Via, Warning: elem,elem list
+   * Accept, Accept-Charset, Accept-Encoding, Accept-Language, Content-Disposition, Content-Type, Expect, TE, Transfer-Encoding: elem;param=val;param=val,elem;param=val;param=val list
+   * Cookie: list that allows both , and ; as separators, weirdness with $
+   * everything else: single element
+
+I suspect I can't unify them, since HTTP is quite irregular at heart.
+
+I got the qvalues taken care of.  It took a whopping eighteen lines, which I'm not happy about.  Basically I sort the Accept-* stuff by decreasing qvalue.  Why oh why doesn't HTTP simply do that directly!?
+
+----
+'''[CMcC] - 2010-06-27 23:08:49'''
+
+Something like the following shim ought to interface most Wub domains to a wibble server.
+
+You'd have to construct the Wub domain with appropriate arguments, then in the wibble::handle definition, pass an option "domain $domain"
+
+Some Wub domains won't work, as they require capabilities that wibble doesn't provide, but many should.
+
+Enjoy.
+
+======
+see examples/wub-support.tcl
+======
+
 ----
 **See also**
 
    * [mini demo webserver]
    * [Wub]
    * [DustMote]
+   * [BowWow]
 
 <<categories>> Webserver
