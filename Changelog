@@ -1,3 +1,36 @@
+**2011-02-03 - Inter-coroutine communication, text/xml POST, cleanup scripts, contentchan**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=24];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=24&D=21&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=24&D=21&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc56a64650]
+
+AMG: I added a bunch of new features.
+
+* Change "wibble" to "::wibble" to support being [source]d, etc. when not in the :: [namespace].  This was done by JCW's request.
+* Add [redirect] zone handler.
+* Modify [dirslash] to chain to [redirect].
+* Add [forbidden] zone handler.
+* Modify [dirlist] to chain to [forbidden].
+* Add [string trimright] to end of [compiletemplate].  I can't remember exactly why I did this, but I think it cleans up the output a little bit in some obscure corner case.
+* Allow display of multiline data in [dumprequest], so long as the hard-coded string length limit isn't exceeded.
+* Remove [resume] and [suspend].
+* Remove argument from [getline] and [getblock]; instead derive the socket name from the coroutine name.
+* Use the new [icc] commands instead of [resume] and [suspend].
+* Strip CR in [enhtml], [enattr], and [enpre].
+* Add new [icc] commands.
+* Add [cleanup] command.
+* Update accept list generation logic to discard elements with a nonpositive qvalue.
+* Restructure the POST content-type dispatch code.
+* Add text/xml POST support.
+* Add default set of cleanup scripts.
+* Create an ICC feed for each coroutine.
+* Add support for contentchan/contentsize in addition to content and contentfile.
+* Don't error on flushing an output socket.  (Maybe I should revert this change.)
+* Call cleanup scripts when the coroutine terminates.
+* Avoid gratuitous use of [namespace code].
+
+
 **2010-12-22 - Fix 501 bug, remove empty query and post**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=21];
