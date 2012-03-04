@@ -1,0 +1,7 @@
+after [dict get $query time ""] [resume timer]
+set start [clock milliseconds]
+suspend timer
+set finish [clock milliseconds]
+dict set response header content-type text/plain
+dict set response content "I waited for [expr {$finish - $start}] milliseconds."
+

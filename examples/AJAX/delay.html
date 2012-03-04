@@ -1,0 +1,24 @@
+<html><head><script type="text/javascript">
+  function delay() {
+    if (window.XMLHttpRequest) {
+      xmlhttp = new XMLHttpRequest();
+    } else {
+      xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+    xmlhttp.onreadystatechange = function() {
+      if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+        document.getElementById("result").innerHTML = xmlhttp.responseText;
+      }
+    }
+    document.getElementById("result").innerHTML = "Waiting...";
+    time = document.getElementById("time").value;
+    xmlhttp.open("GET", "delay?time=" + time, true);
+    xmlhttp.send();
+  }
+</script></head><body>
+  <p>How long shall I wait?</p>
+  <p><input type="text" id="time" /> milliseconds</p>
+  <p><button type="button" onclick="delay()">Do It!</button></p>
+  <div id="result" />
+</body></html>
+

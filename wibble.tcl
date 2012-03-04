@@ -819,18 +819,8 @@ proc ::wibble::icc::get {fids filters {timeout ""}} {
 # Execute a script and return any exception events received by [icc get] within
 # that script.  Other events may be returned too, but only if they happened in
 # the same batch as an exception event.
-#
-# BUG: For now, you're better off incorporating this code directly into your
-# application, rather than actually calling [icc catch].  This is due to
-# limitations in [uplevel].  (1) $script is not bytecoded and therefore may be
-# slow.  (2) You must increment [return]'s -level argument inside $script.
 proc ::wibble::icc::catch {script} {
-    try {
-        uplevel 1 $script
-    } on 7 events {
-        return $events
-    }
-    return
+    tailcall try $script on 7 events {set events} on ok "" {list}
 }
 
 # Send event data to the named feeds, or all if "*".

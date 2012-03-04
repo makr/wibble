@@ -1,6 +1,7 @@
 # **Sample index.html.tmpl**
+# http://wiki.tcl.tk/27379
 % dict set response header content-type text/html
-<html><head><title>$uri</title></head><body>
+<html><head><title>Hello from Wibble! - $uri</title></head><body>
 % set rand [expr {rand()}]
 % if {$rand > 0.5} {
 random=[format %.3f $rand] &gt; 0.5<br/>
@@ -10,7 +11,7 @@ random=[format %.3f $rand] &lt;= 0.5<br/>
 time/date=[clock format [clock seconds]]<br/>
 milliseconds=[clock milliseconds]<br/>
 clicks=[clock clicks]<br/>
-% if {![dict exists $query noiframe]} {
-<iframe src="/?noiframe" width="100%"/>
+% if {[info exists query] && ![dict exists $query noiframe]} {
+<iframe src="?noiframe" width="100%"/>
 % }
 </body></html>

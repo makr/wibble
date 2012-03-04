@@ -1,3 +1,15 @@
+**2011-11-28 - [icc catch] fix**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=28];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=28&D=26&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=28&D=26&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc899455f6]
+
+AMG: Just one change this time.
+
+* Fix [icc catch] to properly [bytecode] the script and to correctly handle [return], etc. inside the script.
+
+
 **2011-11-27 - [icc] improvements**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=26];
@@ -229,7 +241,7 @@ Announcement: [http://wiki.tcl.tk/27383#pagetoc7f4ca42f]
 AMG: I've been holding on to these changes for far too long, and I'm glad to finally publish them.
 
 * Add separator comments delimiting major sections of the code.
-* Change usage of [[[dict with] request]] to cut down on indenting.
+* Change usage of [[dict with] request] to cut down on indenting.
 * Add many conversion routines:
 ** [enhtml]: Encode for HTML.
 ** [enattr]: Encode for HTML tag attribute.

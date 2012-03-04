@@ -1,0 +1,14 @@
+# **Sample image upload, cookies, sessions**
+# http://wiki.tcl.tk/27379
+if {[dict exists $header cookie sessionid ""]} {
+  upvar #0 sessions([dict get $header cookie sessionid ""]) session
+}
+
+if {[info exists session] && [dict exists $session imagetype]
+ && [dict exists $session imagedata]} {
+  dict set response header content-type [dict get $session imagetype]
+  dict set response content [dict get $session imagedata]
+} else {
+  dict set response status 404
+}
+

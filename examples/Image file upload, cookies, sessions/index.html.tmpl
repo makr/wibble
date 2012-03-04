@@ -1,0 +1,93 @@
+# **Sample image file upload, cookies, sessions**
+# http://wiki.tcl.tk/27379
+% dict set response header content-type text/html
+%
+% if {[dict exists $header cookie sessionid ""]} {
+%   set sessionid [dict get $header cookie sessionid ""]
+%   upvar #0 sessions($sessionid) session
+% }
+%
+% set now [clock seconds]
+%
+% if {![info exists session]} {
+%   set sessionid [format %llX [string reverse\
+%       [string range [expr rand()] 2 end]]]
+%   upvar #0 sessions($sessionid) session
+%   set timeout 60
+%   dict set response header set-cookie\
+%       sessionid=$sessionid\;Max-Age=$timeout\;Version=1
+%   dict set session expiration [clock add $now $timeout seconds]
+%   after [expr {$timeout * 1000}] [list apply {{sessionid} {
+%     unset -nocomplain ::sessions($sessionid)
+%   }} $sessionid]
+% }
+%
+% if {[dict exists $post imagetitle ""]
+%  && [dict exists $post imagedata ""]
+%  && [dict exists $post imagedata content-disposition filename]
+%  && [dict exists $post imagedata content-type ""]
+%  && [string length [dict get $post imagedata ""]]} {
+%   set imagetitle [dict get $post imagetitle ""]
+%   set imagefilename [dict get $post imagedata content-disposition filename]
+%   set imagetype [dict get $post imagedata content-type ""]
+%   dict set session imagetitle $imagetitle
+%   dict set session imagedata [dict get $post imagedata ""]
+%   dict set session imagefilename $imagefilename
+%   dict set session imagetype $imagetype
+% } elseif {[dict exists $session imagetitle]} {
+%   set imagetitle [dict get $session imagetitle]
+% } else {
+%   set imagetitle "My Image"
+% }
+%
+<html><head><title>Image file upload test</title></head><body>
+<form method="post" enctype="multipart/form-data">
+  <table border="1"><tr><th>
+    Session ID
+  </th><td>
+    [enhtml $sessionid]
+  </th></tr><tr><th>
+    Expiration
+  </th><td>
+% set expiration [dict get $session expiration]
+    [enhtml [clock format $expiration]], [expr {$expiration - $now}]s left
+  </th></tr><tr><th>
+    Sessions
+  </th><td>
+    <table>
+% foreach id [lsort [array names ::sessions]] {
+%   set expiration [dict get $::sessions($id) expiration]
+    <tr><th>
+      [enhtml $id]
+    </th><td>
+      [enhtml [clock format $expiration]], [expr {$expiration - $now}]s left
+    </td></tr>
+% }
+    </table>
+  </th></tr><tr><th>
+    Image title
+  </th><td>
+    <input type="text" name="imagetitle" value="[enattr $imagetitle]" />
+  </td></tr><tr><th>
+    Image file
+  </th><td>
+    <input type="file" name="imagedata" />
+    <input type="submit" value="Upload Image" />
+% if {[dict exists $session imagedata]} {
+  </td></tr><tr><th>
+    File name
+  </th><td>
+    [enhtml [dict get $session imagefilename]]
+  </td></tr><tr><th>
+    Type
+  </th><td>
+    [enhtml [dict get $session imagetype]]
+  </td></tr><tr><th>
+    Image
+  </th><td>
+    <img src="image" />
+% }
+  </td></tr></table>
+</form>
+</html>
+

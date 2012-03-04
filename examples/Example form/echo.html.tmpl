@@ -1,0 +1,120 @@
+%;# Declare the content type.
+% dict set state response header content-type "" text/html
+%
+%;# Just return the value.
+% proc x {val} {return $val}
+%
+%;# Set some defaults.
+% set method POST
+% set enctype multipart/form-data
+% set numrows 5
+% set rowdata {}
+%
+%;# Import data from query string and post data.
+% foreach source {query post} {
+%;  # Check if there is any query or post data.
+%   if {[info exists $source]} {
+%;    # Get and validate the method.
+%     if {[dict exists [set $source] method ""]
+%      && [dict get [set $source] method ""] in {GET POST}} {
+%       set method [dict get [set $source] method ""]
+%     }
+%
+%;    # Get and validate the enctype.
+%     if {[dict exists [set $source] enctype ""]
+%      && [dict get [set $source] enctype ""] in {
+%         application/x-www-form-urlencoded multipart/form-data text/plain}} {
+%       set enctype [dict get [set $source] enctype ""]
+%     }
+%
+%;    # Get and validate the number of rows.
+%     if {[dict exists [set $source] numrows ""]
+%      && [regexp {^\d+$} [dict get [set $source] numrows ""]]
+%      && [dict get [set $source] numrows ""] < 1000} {
+%       set numrows [dict get [set $source] numrows ""]
+%     }
+%
+%;    # Get rowdata.  This demonstrates how to access multiple keys all with
+%;    # the same name.  Yes, it's less efficient than when everything has a
+%;    # unique name, but at least it works.
+%     foreach {key val} [set $source] {
+%       if {$key eq "rowdata" && [dict exists $val ""]} {
+%         lappend rowdata [dict get $val ""]
+%       }
+%     }
+%
+%;    # Get uploaded file dictionary.
+%     if {[dict exists [set $source] file]} {
+%       set file [dict get [set $source] file]
+%     }
+%   }
+% }
+%
+%;# Construct the form attributes.
+% set formattrs "method=\"[enattr $method]\""
+% if {$method eq "POST"} {
+%   append formattrs " enctype=\"[enattr $enctype]\""
+% }
+<html><body>
+  <form $formattrs accept-charset="iso-8859-1">
+%;# Method selector.
+    Method:
+% foreach option {GET POST} {
+    <input type="radio" name="method" value="[enattr $option]"\
+      [if {$method eq $option} {x {checked="checked"}}]>[enhtml $option]</input>
+% }
+    <br />
+
+%;# Enctype selector.
+    POST enctype:\
+    <select name="enctype">
+% foreach option {
+%   application/x-www-form-urlencoded multipart/form-data text/plain
+% } {
+      <option [if {$enctype eq $option} {x {selected="selected"}}]\
+        value="[enattr $option]">[enhtml $option]</option>
+% }
+    </select>\
+    <br />
+
+%;# Row count selector.
+    Number of rows:\
+    <input type="text" name="numrows" value="[enattr $numrows]" />\
+    <br />
+
+%;# Row data.
+% for {set i 0} {$i < $numrows} {incr i} {
+    Row #[enhtml [expr {$i + 1}]]: <input type="text" name="rowdata"
+%   if {$i < [llength $rowdata]} {
+      value="[enattr [lindex $rowdata $i]]"
+%   }
+    /><br />
+% }
+    
+%;# File upload selector.
+    File upload:\
+    <input type="file" name="file" />\
+    <br />
+
+%;# Submit button.
+    <input type="submit" value="Submit" />
+  </form>
+
+%;# Uploaded file information.
+% if {[info exists file]} {
+  <table>
+    <tr><th colspan="3">Uploaded file</th></tr>
+%   dict for {key val} $file {
+%     if {$key eq ""} {
+    <tr><td colspan="3"><pre>[enpre $val]</pre></td></tr>
+%     } else {
+%       dict for {key2 val2} $val {
+    <tr><td>[enhtml $key]</td><td>[enhtml $key2]</td>
+    <td><tt>[enhtml $val2]</tt></td></tr>
+%       }
+%     }
+%   }
+  </table>
+% }
+</body></html>
+
