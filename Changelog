@@ -1,0 +1,43 @@
+**2010-11-06 - Header and POST parsing**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=4];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=4&D=0&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=4&D=0&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc7f4ca42f]
+
+AMG: I've been holding on to these changes for far too long, and I'm glad to finally publish them.
+
+* Add separator comments delimiting major sections of the code.
+* Change usage of [[[dict with] request]] to cut down on indenting.
+* Add many conversion routines:
+** [enhtml]: Encode for HTML.
+** [enattr]: Encode for HTML tag attribute.
+** [enpre]: Encode for HTML <pre>.
+** [enquery]: Encode a query string.
+** [dequery]: Decode a query string into a list.
+** [enhex]: Encode most non-alphanumerics with hexadecimal codes.
+** [dehex]: Decode hexadecimal encoding.
+** [enurl]: Encode for URLs.
+** [deurl]: Decode URL encoding.
+** [delist]: Decode header list encoding.
+** [dequote]: Decode header quoting.
+** [deheader]: Decode HTTP headers.  (!!!)
+* Actually, [dehex] already existed, named [unhex].  Rename because [enhex] and [unhex] are too similar.
+* Modify zone handlers to use new conversion routines, e.g. [enhtml].
+* Replace <td><b> with <th> in [vars].
+* Simplify the way [dirlist] adds .. to the directory listing.
+* Change [applytemplate] to [compiletemplate], which returns the script instead of running it.
+* Make [template] cache the result of [compiletemplate].
+* Simplify [append]'s arguments in [compiletemplate].
+* Add [channel] closure detection to [getline] and [getblock].
+* Revert second-chance [chan gets] in [getline], since I'm not convinced it's necessary (see [http://wiki.tcl.tk/27382#pagetoc3c65f636]).
+* Change the way [nexthandler] and [sendresponse] pass control back to [getresponse].
+* Add accept, post, and rawpost to the request dictionary.
+* Add Accept*: header handling.
+* Add POST handling.
+* [Unset] request dictionary after sending the response to avoid stale data.
+* Correct error report charset.
+* Incorporate APN's [accept] fix (see [http://wiki.tcl.tk/27382#pagetoc8c99f371]).
+
+The channel closure detection makes it possible to close connections due to timeouts.  This isn't implemented yet, but it would be nice to harden Wibble against basic DoS attacks.
+
