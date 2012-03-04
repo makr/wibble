@@ -1,3 +1,16 @@
+**2010-12-22 - Fix 501 bug, remove empty query and post**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=21];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=21&D=18&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=21&D=18&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc41bb1c27]
+
+AMG: Oops.  The 501 code didn't work.  I forgot to quote the value of the header key, resulting in an extra argument to [dict create].  Also, I removed the query, rawquery, post, and rawpost keys from the request dictionary when no query or post was made.  This makes it easier to check if there was a query or a post.
+
+* Fix 501 bug.
+* Remove empty query, rawquery, post, and rawpost dicts.
+
+
 **2010-12-20 - Remove no-op [nexthandler] invocations, rearrange [suspend]**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=18];

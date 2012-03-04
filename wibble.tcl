@@ -462,11 +462,13 @@ proc wibble::getrequest {port chan peerhost peerport} {
     # Start building the request structure.
     set request [dict create socket $chan peerhost $peerhost peerport $peerport\
         port $port rawtime [clock seconds] time [clock format [clock seconds]]\
-        method $method uri $uri path $path protocol $protocol header {}\
-        rawheader {} accept {} query {} rawquery $query post {} rawpost {}]
+        method $method uri $uri path $path protocol $protocol rawheader {}]
 
     # Parse the query string.
-    dict set request query [dequery [string range $query 1 end]]
+    if {$query ne ""} {
+        dict set request rawquery $query
+        dict set request query [dequery [string range $query 1 end]]
+    }
 
     # Receive and parse the headers.
     while {[set line [getline $chan]] ne ""} {
@@ -604,7 +606,7 @@ proc wibble::getresponse {request} {
     }
 
     # Return 501 as default response.
-    dict create status 501 header content-type text/plain\
+    dict create status 501 header {content-type text/plain}\
         content "not implemented: [dict get $request uri]\n"
 }
 
