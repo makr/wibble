@@ -8,61 +8,72 @@ package provide wibble 0.1
 
 # Define the wibble namespace.
 namespace eval wibble {
-    variable zones
+    variable zonehandlers
 }
 
-# ============================== ZONE HANDLERS =================================
+# ============================== zone handlers ================================
 
 # Echo request dictionary.
-proc wibble::vars {request response} {
+proc wibble::vars {state} {
     dict set response status 200
     dict set response header content-type text/html
     dict set response content "<html><head><style type=\"text/css\">\
+        body {font-family: monospace}\
+        table {border-collapse: collapse; outline: 1px solid #000}\
         th {white-space: nowrap; text-align: left}\
-        table {border-collapse: collapse}\
-        tr:nth-child(odd) {background-color: #eee}\
-        </style></head><body><table border=\"1\">\n"
-    foreach {key val} [dumprequest $request] {
+        th, td {border: 1px solid #727772}\
+        tr:nth-child(odd) {background-color: #ded}\
+        tr:nth-child(even) {background-color: #eee}\
+        th.title {background-color: #8d958d; text-align: center}\
+        </style></head><body><table>"
+    foreach {dictname dictval} $state {
+        if {$dictname eq "request"} {
+            set dictval [dumprequest $dictval]
+        }
         dict append response content\
-            <tr><th>[enhtml $key]</th><td>[enhtml $val]</td></tr>\n
+            "<tr><th class=\"title\" colspan=\"2\">[enhtml $dictname]</th></tr>"
+        foreach {key val} $dictval {
+            dict append response content\
+                <tr><th>[enhtml $key]</th><td>[enhtml $val]</td></tr>
+        }
     }
-    dict append response content </table></body></html>\n
+    dict append response content </table></body></html>
     sendresponse $response
 }
 
 # Redirect when a directory is requested without a trailing slash.
-proc wibble::dirslash {request response} {
-    dict with request {}
+proc wibble::dirslash {state} {
+    dict with state request {}; dict with state options {}
     if {[file isdirectory $fspath] && [string index $suffix end] ni {/ ""}} {
         dict set response status 301
         dict set response header location $path/$rawquery
         sendresponse $response
     } else {
-        nexthandler $request $response
+        nexthandler $state
     }
 }
 
 # Rewrite directory requests to search for an indexfile.
-proc wibble::indexfile {request response} {
-    dict with request {}
+proc wibble::indexfile {state} {
+    dict with state request {}; dict with state options {}
     if {[file isdirectory $fspath]} {
         if {[string index $path end] ne "/"} {
             append path /
         }
-        set newrequest $request
-        dict set newrequest path $path$indexfile
-        nexthandler $newrequest $response $request $response
+        set newstate $state
+        dict set state request path $path$indexfile
+        nexthandler $newstate $state
     } else {
-        nexthandler $request $response
+        nexthandler $state
     }
 }
 
 # Generate directory listings.
-proc wibble::dirlist {request response} {
-    dict with request {}
+proc wibble::dirlist {state} {
+    dict with state request {}; dict with state options {}
     if {![file isdirectory $fspath]} {
         # Pass if the requested object is not a directory or doesn't exist.
-        nexthandler $request $response
+        nexthandler $state
     } elseif {[file readable $fspath]} {
         # If the directory is readable, generate a listing.
         dict set response status 200
@@ -85,8 +96,8 @@ proc wibble::dirlist {request response} {
 }
 
 # Compile templates into scripts.
-proc wibble::template {request response} {
-    dict with request {}
+proc wibble::template {state} {
+    dict with state request {}; dict with state options {}
     if {[file readable $fspath.tmpl] && (![file readable $fspath.script]
       || [file mtime $fspath.script] < [file mtime $fspath.tmpl])} {
         set chan [open $fspath.tmpl]
@@ -97,12 +108,12 @@ proc wibble::template {request response} {
             [compiletemplate "dict append response content" $tmpl]
         chan close $chan
     }
-    nexthandler $request $response
+    nexthandler $state
 }
 
 # Execute scripts.
-proc wibble::script {request response} {
-    dict with request {}
+proc wibble::script {state} {
+    dict with state request {}; dict with state options {}
     if {[file readable $fspath.script]} {
         dict set response status 200
         dict set response header content-type text/plain
@@ -110,31 +121,31 @@ proc wibble::script {request response} {
         source $fspath.script
         sendresponse $response
     } else {
-        nexthandler $request $response
+        nexthandler $state
     }
 }
 
 # Send static files.
-proc wibble::static {request response} {
-    dict with request {}
+proc wibble::static {state} {
+    dict with state request {}; dict with state options {}
     if {![file isdirectory $fspath] && [file exists $fspath]} {
         dict set response status 200
         dict set response contentfile $fspath
         sendresponse $response
     } else {
-        nexthandler $request $response
+        nexthandler $state
     }
 }
 
 # Send a 404.
-proc wibble::notfound {request response} {
+proc wibble::notfound {state} {
     dict set response status 404
     dict set response header content-type text/plain
-    dict set response content "can't find [dict get $request uri]\n"
+    dict set response content "not found: [dict get $state request uri]\n"
     sendresponse $response
 }
 
-# ============================ UTILITY PROCEDURES ==============================
+# ============================ utility procedures =============================
 
 # Compile a template.
 proc wibble::compiletemplate {command template} {
@@ -165,7 +176,7 @@ proc wibble::dumprequest {data {prefix ""}} {
     foreach {key val} $data {
         set key [concat $prefix [list $key]]
         if {$key in {header "header content-type" "header cookie" accept query}
-         || ([lindex $key 0] eq "post" && ([llength $key] < 3
+         || ([lindex $key 0] in {post query} && ([llength $key] < 3
           || ([llength $key] == 3 && [lindex $key 2] ne "")))} {
             lappend result {*}[dumprequest $val $key]
         } elseif {[string length $val] > 512 || [string first \n $val] != -1} {
@@ -177,45 +188,62 @@ proc wibble::dumprequest {data {prefix ""}} {
     return $result
 }
 
-# ========================= NETWORK INPUT PROCEDURES ===========================
+# ================== coroutine and network input procedures ===================
+
+# Construct a command to resume the current coroutine and pass it arguments.
+proc wibble::resume {args} {
+    set lambda [list {coro args} {$coro $args} [namespace current]]
+    concat [list apply $lambda [info coroutine]] $args
+}
+
+# Suspend the current coroutine until one of the requested events occurs.
+proc wibble::suspend {args} {
+    if {"readable" in $args} {
+        # Install a readable handler only if readability is a requested event.
+        set chan [namespace tail [info coroutine]]
+        chan event $chan readable [resume readable]
+    }
+    while {1} {
+        set event [yield]
+        if {[lindex $event 0] in $args} {
+            if {"readable" in $args} {
+                chan event $chan readable ""
+            }
+            return $event
+        }
+    }
+}
 
 # Get a line of data from a channel.
 proc wibble::getline {chan} {
     while {1} {
-        if {[chan names $chan] eq ""} {
-            return -level [info level]
-        } elseif {[chan gets $chan line] >= 0} {
+        if {[chan gets $chan line] >= 0} {
             return $line
-        } elseif {[chan pending input $chan] > 4096} {
-            error "line length exceeds limit of 4096 bytes"
         } elseif {[chan eof $chan]} {
             return -level [info level]
-        } else {
-            yield
+        } elseif {[chan pending input $chan] > 4096} {
+            error "line length exceeds limit of 4096 bytes"
         }
+        suspend readable
     }
 }
 
 # Get a block of data from a channel.
 proc wibble::getblock {chan size} {
     while {1} {
-        if {[chan names $chan] eq ""} {
-            return -level [info level]
-        }
         set chunklet [chan read $chan $size]
         set size [expr {$size - [string length $chunklet]}]
         append chunk $chunklet
-        if {$size == 0} {
-            return $chunk
-        } elseif {[chan eof $chan]} {
+        if {[chan eof $chan]} {
             return -level [info level]
-        } else {
-            yield
+        } elseif {$size == 0} {
+            return $chunk
         }
+        suspend readable
     }
 }
 
-# ==================== CONVERSION AND PARSING PROCEDURES =======================
+# ==================== conversion and parsing procedures ======================
 
 # Encode for HTML by substituting angle brackets, ampersands, line breaks, and
 # space sequences.
@@ -404,9 +432,9 @@ proc wibble::deheader {str} {
     return $header
 }
 
-# =============================== WIBBLE CORE ==================================
+# =============================== wibble core =================================
 
-# Advance to the next zone handler using the specified request/response list.
+# Advance to the next zone handler using the specified state list.
 proc wibble::nexthandler {args} {
     return -code 5 $args
 }
@@ -417,9 +445,9 @@ proc wibble::sendresponse {response} {
 }
 
 # Register a zone handler.
-proc wibble::handle {zone command args} {
-    variable zones
-    dict lappend zones $zone [list $command $args]
+proc wibble::handle {prefix command args} {
+    variable zonehandlers
+    lappend zonehandlers $prefix $command $args
 }
 
 # Get an HTTP request from a client.
@@ -538,66 +566,51 @@ proc wibble::getrequest {port chan peerhost peerport} {
 
 # Get a response from the zone handlers.
 proc wibble::getresponse {request} {
-    variable zones
-    set state [list $request [dict create status 500 content "Zone error\n"]]
-    dict set fallback status 501
-    dict set fallback header content-type text/plain
-    dict set fallback content "not implemented: [dict get $request uri]\n"
+    variable zonehandlers
+    set system [list [dict create options {} request $request]]
 
-    # Process all zones.
-    foreach {prefix handlers} $zones {
+    # Process all zone handlers.
+    foreach {prefix command options} $zonehandlers {
         set match $prefix
         if {[string index $match end] ne "/"} {
             append match /
         }
 
-        # Process all handlers in this zone.
-        foreach handler $handlers {
-            lassign $handler command options
+        # Run the zone handler on all states with requests in the zone.
+        set i 0
+        foreach {state} $system {
+            set path [dict get $state request path]
+            if {$path eq $prefix
+             || [string equal -length [string length $match] $match $path]} {
+                set suffix [string range $path [string length $prefix] end]
 
-            # Try all request/response pairs against this handler.
-            set i 0
-            foreach {request response} $state {
-                # Skip this request if it's not for the current zone.
-                set path [dict get $request path]
-                if {$path ne $prefix && ![string equal\
-                        -length [string length $match] $match $path]} {
-                    continue
-                }
-
-                # Inject a few extra keys into the request dict.
-                dict set request prefix $prefix
-                dict set request suffix [string range $path\
-                                        [string length $prefix] end]
+                # Replace the options in the state dict.
+                dict set state options $options
+                dict set state options prefix $prefix
+                dict set state options suffix $suffix
                 if {[dict exists $options root]} {
-                    dict set request fspath\
-                        [dict get $options root]/[dict get $request suffix]
+                    dict set state options fspath\
+                        [dict get $options root]/$suffix
                 }
-                set request [dict merge $request $options]
 
                 # Invoke the handler and process its outcome.
                 try {
-                    {*}$command $request $response
+                    {*}$command $state
                 } on 5 outcome {
-                    # Filter out extra keys from the new request dicts.
-                    for {set j 0} {$j < [llength $outcome]} {incr j 2} {
-                        lset outcome $j [dict remove [lindex $outcome $j]\
-                                prefix suffix fspath {*}[dict keys $options]]
-                    }
-
-                    # Update the state tree and continue processing.
-                    set state [lreplace $state $i $i+1 {*}$outcome]
+                    # [nexthandler]: Update the system and continue processing.
+                    set system [lreplace $system $i $i {*}$outcome]
                 } on 6 outcome {
-                    # A response has been obtained.  Return it.
+                    # [sendresponse]: A response has been obtained.  Return it.
                     return $outcome
                 }
-                incr i 2
             }
+            incr i
         }
     }
 
     # Return 501 as default response.
-    return $fallback
+    dict create status 501 header content-type text/plain\
+        content "not implemented: [dict get $request uri]\n"
 }
 
 # Main connection processing loop.
@@ -613,13 +626,13 @@ proc wibble::process {port socket peerhost peerport} {
             if {[dict exists $response contentfile]} {
                 set size [file size [dict get $response contentfile]]
                 if {[dict get $request method] ne "HEAD"} {
-                    # Open the channel now, to catch errors early.
+                    # Open the channel now to catch errors early.
                     set file [open [dict get $response contentfile]]
                     chan configure $file -translation binary
                 }
             } elseif {[dict exists $response content]} {
                 dict set response content [encoding convertto iso8859-1\
-                        [dict get $response content]]
+                    [dict get $response content]]
                 set size [string length [dict get $response content]]
             } else {
                 set size 0
@@ -630,7 +643,7 @@ proc wibble::process {port socket peerhost peerport} {
             set end [expr {$size - 1}]
             if {[dict exists $request header range]
              && [regexp {^bytes=(\d*)-(\d*)$} [dict get $request header range]\
-                        _ begin end]
+                    _ begin end]
              && [dict get $response status] == 200} {
                 dict set response status 206
                 if {$begin eq "" || $begin >= $size} {
@@ -671,23 +684,18 @@ proc wibble::process {port socket peerhost peerport} {
             if {[dict get $request method] ne "HEAD"} {
                 chan configure $socket -translation binary
                 if {[dict exists $response contentfile]} {
-                    # Send response content from a file.
+                    # Asynchronously send response content from a file.
                     chan seek $file $begin
                     chan copy $file $socket -size [expr {$end - $begin + 1}]\
-                        -command [info coroutine]
-                    while {1} {
-                        set result [yield]
-                        if {[llength $result] == 2} {
-                            error [lindex $result 1]
-                        } elseif {[llength $result] == 1} {
-                            break
-                        }
+                        -command [resume copydone]
+                    if {[llength [set result [suspend copydone]]] == 3} {
+                        error [lindex $result 2]
                     }
                     chan close $file
                 } elseif {[dict exists $response content]} {
                     # Send buffered response content.
                     chan puts -nonewline $socket [string range\
-                            [dict get $response content] $begin $end]
+                        [dict get $response content] $begin $end]
                 }
             }
 
@@ -733,12 +741,8 @@ proc wibble::process {port socket peerhost peerport} {
 # Listen for incoming connections.
 proc wibble::listen {port} {
     socket -server [list apply [list {port socket peerhost peerport} {
-        # Insert an extra stack frame to work around Tcl bug 3104471:
-        chan event $socket readable [list apply\
-            [list {} [list $socket] [namespace current]]]
-        # chan event $socket readable [namespace code $socket]
-        coroutine $socket {*}[namespace code process] $port $socket\
-            $peerhost $peerport
+        coroutine $socket {*}[namespace code process]\
+            $port $socket $peerhost $peerport
     } [namespace current]] $port] $port
 }
 
@@ -747,7 +751,7 @@ proc wibble::log {message} {
     chan puts stderr $message
 }
 
-# =============================== EXAMPLE CODE =================================
+# =============================== example code ================================
 
 # Demonstrate Wibble if being run directly.
 if {$argv0 eq [info script]} {

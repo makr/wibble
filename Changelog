@@ -1,3 +1,30 @@
+**2010-12-18 - State dicts, coroutine helpers, fixed zone handler order**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=17];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=17&D=13&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=17&D=13&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetocab50d82b]
+
+AMG: I changed the zone handler arguments, so any existing zone handlers will have to be rewritten.  I hope this new method works better than the fixed request/response approach I had before.  Also, I changed the way the [coroutine]s [yield] and are resumed; this should make AJAX work better.  (Yes, Wibble supports AJAX!)
+
+* Cutesy CSS changes in [vars].
+* Update all zone handlers to receive a unified state dict instead of request and response dicts.
+* Update [vars] to display all sub-dicts in $state.
+* Pointless wording, capitalization, comment, and indentation changes.
+* Fix [dumprequest] to format query the same as post.
+* Write [resume] and [suspend] as wrappers around reinvoking the coroutine and [yield].
+* Remove [chan names] testing code since it didn't work anyway.
+* Update [getline] and [getblock] to use [suspend].
+* Rename $zones to $zonehandlers.
+* Change $zonehandlers to be a flat list instead of a dict.
+* Rewrite [getresponse] to use state dictionaries instead of request/response pairs.
+* Don't merge options into the request dict; instead make a separate options dict in $state.
+* Fix zone order handling in [getresponse].
+* Fix a subtle bug in [getresponse] that can make it replace the wrong state entry in $system.
+* Update the [chan copy] code to use [resume] and [suspend].
+* Don't install the [chan event] handler in [listen] since it'll be installed by [suspend].
+
+
 **2010-11-13 - Non-blocking file transfers, bug workarounds**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=13];
