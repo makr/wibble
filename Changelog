@@ -1,3 +1,25 @@
+**2011-11-27 - [icc] improvements**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=26];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=26&D=25&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=26&D=25&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetocadc2cbf6]
+
+AMG: Some [icc] stuff...
+
+* Improve comments.
+* In [deheader], split if-match and if-none-match to be separate header types.
+* Always accept exception and timeout events.
+* Remove unnecessary [if]s.
+* Add [icc destroy] to destroy a feed, performing cleanup along the way.
+* Add support for exception events to [icc get].
+* Guard against [icc destroy] happening in the middle of [icc get].
+* Add [icc catch] to get exception events.
+* Don't explicitly accept timeout in the coroutine feed.
+* In [panic], don't attempt to send errors to the client if not using HTTP.
+* Improve demo to use docroot directory if it exists.
+
+
 **2011-11-24 - New outgoing header format, Thanksgiving bonanza**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=25];

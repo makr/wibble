@@ -13,7 +13,7 @@ namespace eval ::wibble {
 
 # ============================== zone handlers ================================
 
-# Define the wibble::zone namespace.
+# Define the ::wibble::zone namespace.
 namespace eval ::wibble::zone {
     namespace path ::wibble
 }
@@ -548,15 +548,16 @@ proc ::wibble::deheader {str} {
                 }
                 lappend val [string tolower $key2] $val2
             }
-        } connection - content-encoding - content-language - if-match -
-        if-none-match - trailer - upgrade - vary - via {
+        } connection - content-encoding - content-language - none-match -
+        trailer - upgrade - vary - via {
             # Value has format "elem1,elem2".
             foreach elem [delist comma $raw] {
-                if {$key in {if-match if-none-match}} {
-                    lappend val [detag [string trim $elem]]
-                } else {
-                    lappend val [dequote [string trim $elem]]
-                }
+                lappend val [dequote [string trim $elem]]
+            }
+        } if-match - if-none-match {
+            # Value has format "tag1,tag2".
+            foreach elem [delist comma $raw] {
+                lappend val [detag [string trim $elem]]
             }
         } warning {
             # Value has format "elem1.1 elem1.2 elem1.3,elem2.1 elem2.2".
@@ -621,7 +622,7 @@ proc ::wibble::deheader {str} {
 
 # The inter-coroutine communication procedures are in the [icc] ensemble.
 namespace eval ::wibble::icc {
-    namespace export configure get put
+    namespace export configure destroy get catch put
     namespace ensemble create
     variable feeds
 }
@@ -646,15 +647,13 @@ proc ::wibble::icc::configure {fid operation args} {
 
     # Initialize the feed if it doesn't already exist.
     if {![info exists feeds] || ![dict exists $feeds $fid]} {
-        dict set feeds $fid {acceptable "" lapsetime "" lapsescript ""
-            lapsecancel "" suspended "" pending ""}
+        dict set feeds $fid {acceptable {exception timeout} lapsetime ""
+            lapsescript "" lapsecancel "" suspended "" pending ""}
     }
 
     # Reset the feed's lapse timeout.
-    if {[dict get $feeds $fid lapsecancel] ne ""} {
-        after cancel [dict get $feeds $fid lapsecancel]
-        dict set feeds $fid lapsecancel ""
-    }
+    after cancel [dict get $feeds $fid lapsecancel]
+    dict set feeds $fid lapsecancel ""
 
     # Process the requested operation.
     switch $operation {
@@ -671,7 +670,8 @@ proc ::wibble::icc::configure {fid operation args} {
         set index 0
         foreach filter [dict get $feeds $fid acceptable] {
             foreach pattern $args {
-                if {[string match $pattern $filter]} {
+                if {[string match $pattern $filter]
+                 && $filter ni {exception timeout}} {
                     dict set feeds $fid acceptable [lreplace\
                         [dict get $feeds $fid acceptable] $index $index]
                     incr index -1
@@ -689,24 +689,66 @@ proc ::wibble::icc::configure {fid operation args} {
     }
 }
 
-# Get a list of events on one or more feeds matching any of the filters.
+# Destroy a feed.
+proc ::wibble::icc::destroy {fid} {
+    variable feeds
+
+    # Cancel the feed's readability and timeout handlers.
+    if {[namespace qualifiers $fid] eq "::wibble"
+     && [set socket [namespace tail $fid]] eq [chan names $socket]} {
+         chan event $socket readable ""
+    }
+    after cancel [dict get $feeds $fid lapsecancel]
+
+    # Wake suspended coroutines monitoring only this feed with no timeout.
+    dict for {coro filters} [dict get $feeds $fid suspended] {
+        if {"timeout" ni $filters} {
+            lappend suspended $coro
+        }
+    }
+    if {[info exists suspended]} {
+        dict for {fid2 data2} $feeds {
+            set index 0
+            foreach coro $suspended {
+                if {$coro in [dict get $data2 suspended]} {
+                    set suspended [lreplace $suspended $index $index]
+                    incr index -1
+                }
+                incr index
+            }
+        }
+        foreach coro $suspended {
+            $coro
+        }
+    }
+
+    # Unset the feed's data structure.
+    dict unset feeds $fid
+}
+
+# Get list of events on any of the named feeds matching any of the filters.  If
+# an exception event is received, execution jumps to the enclosing [icc catch].
 proc ::wibble::icc::get {fids filters {timeout ""}} {
     variable feeds
 
+    # The exception event is always permitted.
+    lappend filters exception
+    set code 0
+
     # Reset the feed lapse timeouts, and check for pending events.
-    set result {}
     set index 0
     foreach fid $fids {
         # Reset the feed's lapse timeout.
-        if {[dict get $feeds $fid lapsecancel] ne ""} {
-            after cancel [dict get $feeds $fid lapsecancel]
-            dict set feeds $fid lapsecancel ""
-        }
+        after cancel [dict get $feeds $fid lapsecancel]
+        dict set feeds $fid lapsecancel ""
 
         # Gather the pending events that match the request filters.
         foreach entry [dict get $feeds $fid pending] {
             foreach filter $filters {
                 if {[string match $filter [lindex $entry 0]]} {
+                    if {[lindex $entry 0] eq "exception"} {
+                        set code 7
+                    }
                     dict set feeds $fid pending [lreplace\
                         [dict get $feeds $fid pending] $index $index]
                     lappend result $entry
@@ -719,11 +761,12 @@ proc ::wibble::icc::get {fids filters {timeout ""}} {
     }
 
     # If no acceptable events were pending, wait for one to occur.
-    if {![llength $result]} {
+    if {![info exists result]} {
         # Install wake-up handlers for readability and timeout, as requested.
         set coro [info coroutine]
-        set socket [namespace tail $coro]
-        if {[set readable [expr {"readable" in $filters && $coro in $fids}]]} {
+        if {[namespace qualifiers $coro] eq "::wibble"
+         && "readable" in $filters && $coro in $fids} {
+            set socket [namespace tail $coro]
             chan event $socket readable [list $coro readable]
         }
         if {$timeout ne ""} {
@@ -739,32 +782,55 @@ proc ::wibble::icc::get {fids filters {timeout ""}} {
             dict set feeds $fid suspended $coro $filters
         }
         set result [list [yield]]
+        if {[lindex $result 0 0] eq "exception"} {
+            set code 7
+        } elseif {![llength [lindex $result 0]]} { 
+            set result {}
+        }
         foreach fid $fids {
-            dict unset feeds $fid suspended $coro
+            if {[dict exists $feeds $fid]} {
+                dict unset feeds $fid suspended $coro
+            }
         }
 
         # Remove the readability and timeout handlers.
         if {$timeout ne "" && [lindex $result 0 0] ne "timeout"} {
             after cancel $timeoutcancel
         }
-        if {$readable} {
+        if {[info exists socket]} {
             chan event $socket readable ""
         }
     }
 
     # Restart the lapse timeouts for the feeds monitored by this coroutine.
     foreach fid $fids {
-        if {[dict get $feeds $fid lapsetime] eq ""} {continue}
-
-        if {[dict get $feeds $fid lapsecancel] ne ""} {
+        if {[dict exists $feeds $fid]
+         && [dict get $feeds $fid lapsetime] ne ""} {
             after cancel [dict get $feeds $fid lapsecancel]
+            dict set feeds $fid lapsecancel [after [dict get $feeds $fid\
+                lapsetime] [list ::wibble::icc::lapse $fid]]
         }
-        dict set feeds $fid lapsecancel [after [dict get $feeds $fid lapsetime]\
-            [list ::wibble::icc::lapse $fid]]
     }
 
-    # Return the event data.
-    return $result
+    # Return the event data.  If there was an exception event, return code 7.
+    return -code $code $result
+}
+
+# Execute a script and return any exception events received by [icc get] within
+# that script.  Other events may be returned too, but only if they happened in
+# the same batch as an exception event.
+#
+# BUG: For now, you're better off incorporating this code directly into your
+# application, rather than actually calling [icc catch].  This is due to
+# limitations in [uplevel].  (1) $script is not bytecoded and therefore may be
+# slow.  (2) You must increment [return]'s -level argument inside $script.
+proc ::wibble::icc::catch {script} {
+    try {
+        uplevel 1 $script
+    } on 7 events {
+        return $events
+    }
+    return
 }
 
 # Send event data to the named feeds, or all if "*".
@@ -1097,8 +1163,8 @@ proc ::wibble::process {port socket peerhost peerport} {
         # Perform initial configuration.
         set coro [info coroutine]
         cleanup close_client_socket [list chan close $socket]
-        cleanup unset_feed [list dict unset ::wibble::icc::feeds $coro]
-        icc configure $coro accept readable copydone timeout
+        cleanup unset_feed [list icc destroy $coro]
+        icc configure $coro accept readable copydone
         chan configure $socket -blocking 0
 
         # Main loop.
@@ -1173,15 +1239,17 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
     append message "\nerrorinfo: [dict get $options -errorinfo]"
     append message "\n*** INTERNAL SERVER ERROR (END #$errorcount) ***"
     log $message
-    catch {
-        chan configure $socket -translation crlf
-        chan puts $socket "HTTP/1.1 500 Internal Server Error"
-        chan puts $socket "Content-Type: text/plain;charset=utf-8"
-        chan puts $socket "Content-Length: [string length $message]"
-        chan puts $socket "Connection: close"
-        chan puts $socket ""
-        chan configure $socket -translation lf -encoding utf-8
-        chan puts $socket $message
+    if {![dict exists $response nonhttp] && $socket ne ""} {
+        catch {
+            chan configure $socket -translation crlf
+            chan puts $socket "HTTP/1.1 500 Internal Server Error"
+            chan puts $socket "Content-Type: text/plain;charset=utf-8"
+            chan puts $socket "Content-Length: [string length $message]"
+            chan puts $socket "Connection: close"
+            chan puts $socket ""
+            chan configure $socket -translation lf -encoding utf-8
+            chan puts $socket $message
+        }
     }
 }
 
@@ -1191,6 +1259,9 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
 if {$argv0 eq [info script]} {
     # Guess the root directory.
     set root [file normalize [file dirname [info script]]]
+    if {[file isdirectory [file join $root docroot]]} {
+        set root [file join $root docroot]
+    }
 
     # Define zone handlers.
     set ::wibble::zonehandlers {}
