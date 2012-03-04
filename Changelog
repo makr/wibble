@@ -1,3 +1,22 @@
+**2010-11-13 - Non-blocking file transfers, bug workarounds**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=13];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=13&D=11&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=13&D=11&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc8a441aa4]
+
+AMG: Sorry about the blocking [chan copy].  It's fixed now.
+
+* Don't initialize $wibble::zones to empty string.  This makes it easier to re-[source] wibble.tcl while it's running.
+* Remove some extra [chan close]s.  The channel will be closed anyway by the finally clause at the end of [process].
+* Add workaround for the Wiki bug that was corrupting [enhtml] and [enattr] (see [http://wiki.tcl.tk/27382#pagetoc5da162fc]).
+* Remove the question mark from [enquery] to make it mirror [dequery]
+* Make [chan copy] be non-blocking.
+* Add workaround for the "command returned bad code: 2" Tcl bug (see [http://wiki.tcl.tk/27382#pagetoc640ac485]).
+* Spell out "peerhost" and "peerport".
+* Re-fix the [namespace code] in [accept] (see [http://wiki.tcl.tk/27382#pagetoca290566b]).
+
+
 **2010-11-07 - Separate templates and scripts, improved request dictionary reporting**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=11];

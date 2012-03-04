@@ -8,7 +8,7 @@ package provide wibble 0.1
 
 # Define the wibble namespace.
 namespace eval wibble {
-    variable zones {}
+    variable zones
 }
 
 # ============================== ZONE HANDLERS =================================
@@ -189,7 +189,6 @@ proc wibble::getline {chan} {
         } elseif {[chan pending input $chan] > 4096} {
             error "line length exceeds limit of 4096 bytes"
         } elseif {[chan eof $chan]} {
-            chan close $chan
             return -level [info level]
         } else {
             yield
@@ -209,7 +208,6 @@ proc wibble::getblock {chan size} {
         if {$size == 0} {
             return $chunk
         } elseif {[chan eof $chan]} {
-            chan close $chan
             return -level [info level]
         } else {
             yield
@@ -222,13 +220,13 @@ proc wibble::getblock {chan size} {
 # Encode for HTML by substituting angle brackets, ampersands, line breaks, and
 # space sequences.
 proc wibble::enhtml {str} {
-    string map {< &lt; > &gt; & &amp; \n "<br />\n" "  " " &#160;"} $str
+    string map {< &lt; > &gt; & &amp; \n "<br />\n" "  " " &\#160;"} $str
 }
 
 # Encode for HTML tag attribute by substituting angle brackets, ampersands,
 # double quotes, and space sequences.
 proc wibble::enattr {str} {
-    string map {< &lt; > &gt; & &amp; \" &quot; "  " " &#160;"} $str
+    string map {< &lt; > &gt; & &amp; \" &quot; "  " " &\#160;"} $str
 }
 
 # Encode for HTML <pre> by substituting angle brackets and ampersands.
@@ -236,7 +234,7 @@ proc wibble::enpre {str} {
     string map {< &lt; > &gt; & &amp;} $str
 }
 
-# Encode a query string.
+# Encode a query string.  The caller must prepend the question mark.
 proc wibble::enquery {args} {
     set query {}
     foreach {key val} [concat {*}$args] {
@@ -246,7 +244,7 @@ proc wibble::enquery {args} {
             lappend query [enurl $key]
         }
     }
-    return ?[join $query &]
+    join $query &
 }
 
 # Decode a query string into a list.  The caller must strip the question mark.
@@ -675,7 +673,16 @@ proc wibble::process {port socket peerhost peerport} {
                 if {[dict exists $response contentfile]} {
                     # Send response content from a file.
                     chan seek $file $begin
-                    chan copy $file $socket -size [expr {$end - $begin + 1}]
+                    chan copy $file $socket -size [expr {$end - $begin + 1}]\
+                        -command [info coroutine]
+                    while {1} {
+                        set result [yield]
+                        if {[llength $result] == 2} {
+                            error [lindex $result 1]
+                        } elseif {[llength $result] == 1} {
+                            break
+                        }
+                    }
                     chan close $file
                 } elseif {[dict exists $response content]} {
                     # Send buffered response content.
@@ -725,9 +732,13 @@ proc wibble::process {port socket peerhost peerport} {
 
 # Listen for incoming connections.
 proc wibble::listen {port} {
-    socket -server [list apply [list {port socket phost pport} {
-        chan event $socket readable [namespace code $socket]
-        coroutine $socket [namespace code process] $port $socket $phost $pport
+    socket -server [list apply [list {port socket peerhost peerport} {
+        # Insert an extra stack frame to work around Tcl bug 3104471:
+        chan event $socket readable [list apply\
+            [list {} [list $socket] [namespace current]]]
+        # chan event $socket readable [namespace code $socket]
+        coroutine $socket {*}[namespace code process] $port $socket\
+            $peerhost $peerport
     } [namespace current]] $port] $port
 }
 
