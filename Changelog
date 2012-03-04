@@ -1,3 +1,17 @@
+**2010-12-20 - Remove no-op [nexthandler] invocations, rearrange [suspend]**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=18];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=18&D=17&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=18&D=17&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetocc7121a3d]
+
+AMG: Per JBR's suggestion, I removed the [nexthandler $state] calls when $state is unmodified.  Instead the zone handler just returns.  This winds up having the same effect, because the no-op [nexthandler $state] was changing $system without really modifying it. ;^)
+
+* Remove no-op [nexthandler] invocations throughout Wibble.
+* Clarify the comment for [resume].
+* Rearrange [suspend] to be a little easier to understand.
+
+
 **2010-12-18 - State dicts, coroutine helpers, fixed zone handler order**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=17];

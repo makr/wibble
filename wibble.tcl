@@ -48,8 +48,6 @@ proc wibble::dirslash {state} {
         dict set response status 301
         dict set response header location $path/$rawquery
         sendresponse $response
-    } else {
-        nexthandler $state
     }
 }
 
@@ -63,8 +61,6 @@ proc wibble::indexfile {state} {
         set newstate $state
         dict set state request path $path$indexfile
         nexthandler $newstate $state
-    } else {
-        nexthandler $state
     }
 }
 
@@ -73,7 +69,6 @@ proc wibble::dirlist {state} {
     dict with state request {}; dict with state options {}
     if {![file isdirectory $fspath]} {
         # Pass if the requested object is not a directory or doesn't exist.
-        nexthandler $state
     } elseif {[file readable $fspath]} {
         # If the directory is readable, generate a listing.
         dict set response status 200
@@ -108,7 +103,6 @@ proc wibble::template {state} {
             [compiletemplate "dict append response content" $tmpl]
         chan close $chan
     }
-    nexthandler $state
 }
 
 # Execute scripts.
@@ -120,8 +114,6 @@ proc wibble::script {state} {
         dict set response content ""
         source $fspath.script
         sendresponse $response
-    } else {
-        nexthandler $state
     }
 }
 
@@ -132,8 +124,6 @@ proc wibble::static {state} {
         dict set response status 200
         dict set response contentfile $fspath
         sendresponse $response
-    } else {
-        nexthandler $state
     }
 }
 
@@ -190,7 +180,7 @@ proc wibble::dumprequest {data {prefix ""}} {
 
 # ================== coroutine and network input procedures ===================
 
-# Construct a command to resume the current coroutine and pass it arguments.
+# Construct a command to resume the current coroutine and pass it event data.
 proc wibble::resume {args} {
     set lambda [list {coro args} {$coro $args} [namespace current]]
     concat [list apply $lambda [info coroutine]] $args
@@ -198,20 +188,25 @@ proc wibble::resume {args} {
 
 # Suspend the current coroutine until one of the requested events occurs.
 proc wibble::suspend {args} {
+    # Install a readable handler only if readability is a requested event.
     if {"readable" in $args} {
-        # Install a readable handler only if readability is a requested event.
         set chan [namespace tail [info coroutine]]
         chan event $chan readable [resume readable]
     }
-    while {1} {
+
+    # Yield until a requested event happens.
+    set event [yield]
+    while {[lindex $event 0] ni $args} {
         set event [yield]
-        if {[lindex $event 0] in $args} {
-            if {"readable" in $args} {
-                chan event $chan readable ""
-            }
-            return $event
-        }
     }
+
+    # Remove the readability handler if it was installed.
+    if {"readable" in $args} {
+        chan event $chan readable ""
+    }
+
+    # Return the event type and any extra data that was passed to [resume].
+    return $event
 }
 
 # Get a line of data from a channel.
