@@ -17,19 +17,14 @@ namespace eval wibble {
 proc wibble::vars {request response} {
     dict set response status 200
     dict set response header content-type text/html
-    dict set response content {<html><body><table border="1">}
-    dict for {key val} $request {
-        if {$key in {header accept query post}} {
-            set newval ""
-            dict for {subkey subval} $val {
-                append newval <b>[enhtml [list $subkey]]</b>\n
-                append newval [enhtml [list $subval]]\n
-            }
-            set val $newval
-        } else {
-            set val [enhtml $val]
-        }
-        dict append response content <tr><th>$key</th><td>$val</td></tr>
+    dict set response content "<html><head><style type=\"text/css\">\
+        th {white-space: nowrap; text-align: left}\
+        table {border-collapse: collapse}\
+        tr:nth-child(odd) {background-color: #eee}\
+        </style></head><body><table border=\"1\">\n"
+    foreach {key val} [dumprequest $request] {
+        dict append response content\
+            <tr><th>[enhtml $key]</th><td>[enhtml $val]</td></tr>\n
     }
     dict append response content </table></body></html>\n
     sendresponse $response
@@ -89,23 +84,30 @@ proc wibble::dirlist {request response} {
     }
 }
 
-# Process templates.
+# Compile templates into scripts.
 proc wibble::template {request response} {
     dict with request {}
-    if {[file readable $fspath.tmpl]} {
-        if {![file readable $fspath.tmpl.cmpl]
-         || [file mtime $fspath.tmpl.cmpl] < [file mtime $fspath.tmpl]} {
-            set chan [open $fspath.tmpl]
-            set t [read $chan]
-            chan close $chan
-            set chan [open $fspath.tmpl.cmpl w]
-            chan puts $chan [compiletemplate "dict append response content" $t]
-            chan close $chan
-        }
+    if {[file readable $fspath.tmpl] && (![file readable $fspath.script]
+      || [file mtime $fspath.script] < [file mtime $fspath.tmpl])} {
+        set chan [open $fspath.tmpl]
+        set tmpl [read $chan]
+        chan close $chan
+        set chan [open $fspath.script w]
+        chan puts -nonewline $chan\
+            [compiletemplate "dict append response content" $tmpl]
+        chan close $chan
+    }
+    nexthandler $request $response
+}
+
+# Execute scripts.
+proc wibble::script {request response} {
+    dict with request {}
+    if {[file readable $fspath.script]} {
         dict set response status 200
         dict set response header content-type text/plain
         dict set response content ""
-        source $fspath.tmpl.cmpl
+        source $fspath.script
         sendresponse $response
     } else {
         nexthandler $request $response
@@ -154,6 +156,27 @@ proc wibble::compiletemplate {command template} {
     return $script
 }
 
+# Flatten the request dictionary into a form that's easier to log.
+proc wibble::dumprequest {data {prefix ""}} {
+    if {![llength $data]} {
+        return [list $prefix ""]
+    }
+    set result {}
+    foreach {key val} $data {
+        set key [concat $prefix [list $key]]
+        if {$key in {header "header content-type" "header cookie" accept query}
+         || ([lindex $key 0] eq "post" && ([llength $key] < 3
+          || ([llength $key] == 3 && [lindex $key 2] ne "")))} {
+            lappend result {*}[dumprequest $val $key]
+        } elseif {[string length $val] > 512 || [string first \n $val] != -1} {
+            lappend result $key (len=[string length $val])
+        } else {
+            lappend result $key $val
+        }
+    }
+    return $result
+}
+
 # ========================= NETWORK INPUT PROCEDURES ===========================
 
 # Get a line of data from a channel.
@@ -199,13 +222,13 @@ proc wibble::getblock {chan size} {
 # Encode for HTML by substituting angle brackets, ampersands, line breaks, and
 # space sequences.
 proc wibble::enhtml {str} {
-    string map {< &lt; > &gt; & &amp; \n "<br />\n" "  " "  "} $str
+    string map {< &lt; > &gt; & &amp; \n "<br />\n" "  " " &#160;"} $str
 }
 
 # Encode for HTML tag attribute by substituting angle brackets, ampersands,
 # double quotes, and space sequences.
 proc wibble::enattr {str} {
-    string map {< &lt; > &gt; & &amp; \" &quot; "  " "  "} $str
+    string map {< &lt; > &gt; & &amp; \" &quot; "  " " &#160;"} $str
 }
 
 # Encode for HTML <pre> by substituting angle brackets and ampersands.
@@ -402,7 +425,7 @@ proc wibble::handle {zone command args} {
 }
 
 # Get an HTTP request from a client.
-proc wibble::getrequest {chan peerhost peerport} {
+proc wibble::getrequest {port chan peerhost peerport} {
     # The HTTP header uses CR/LF line breaks.
     chan configure $chan -translation crlf
 
@@ -417,6 +440,7 @@ proc wibble::getrequest {chan peerhost peerport} {
 
     # Start building the request structure.
     set request [dict create socket $chan peerhost $peerhost peerport $peerport\
+        port $port rawtime [clock seconds] time [clock format [clock seconds]]\
         method $method uri $uri path $path protocol $protocol header {}\
         rawheader {} accept {} query {} rawquery $query post {} rawpost {}]
 
@@ -450,8 +474,8 @@ proc wibble::getrequest {chan peerhost peerport} {
         dict set request accept $key $preferences
     }
 
-    # Get the request body, if there is one.
-    if {$method in {POST PUT}} {
+    # Get and parse the request body, if there is one.
+    if {$method eq "POST"} {
         # Get the request body.
         if {[dict exists $request header transfer-encoding]
          && [dict get $request header transfer-encoding] eq "chunked"} {
@@ -468,16 +492,13 @@ proc wibble::getrequest {chan peerhost peerport} {
             set data [getblock $chan [dict get $request header content-length]]
             chan configure $chan -translation crlf
         }
-    }
 
-    # Parse the request body if present.
-    switch $method {
-    POST {
+        # Parse the request body.
         dict set request rawpost $data
         set post ""
         if {[dict exists $request header content-type boundary] &&
         [dict get $request header content-type ""] eq "multipart/form-data"} {
-            # Interpret multipart POSTs (required for file uploads).
+            # Interpret multipart/form-data POSTs (required for file uploads).
             set data \r\n$data
             set sep \r\n--[dict get $request header content-type boundary]
             set beg [expr {[string first $sep $data] + 2}]
@@ -490,17 +511,16 @@ proc wibble::getrequest {chan peerhost peerport} {
                     [string range $part 0 [expr {$split - 1}]]]]
                 dict set val "" [string range $part [expr {$split + 4}] end]
                 if {[dict exists $val content-disposition name]} {
-                    set key [dict get $val content-disposition name]
+                    lappend post [dict get $val content-disposition name] $val
                 } else {
-                    set key ""
+                    lappend post "" $val
                 }
-                lappend post $key $val
                 set beg [expr {$end + 3}]
                 set end [expr {[string first $sep $data $beg] - 1}]
             }
         } elseif {[dict exists $request header content-type]
                && [dict get $request header content-type ""] eq "text/plain"} {
-            # Interpret text/plain POSTS.
+            # Interpret text/plain POSTs.
             foreach elem [lrange [split $data \n] 0 end-1] {
                 regexp {([^\r=]*)(?:(=[^\r]*))?} $elem _ key val
                 if {$val ne ""} {
@@ -513,9 +533,7 @@ proc wibble::getrequest {chan peerhost peerport} {
             set post [dequery $data]
         }
         dict set request post $post
-    } PUT {
-        # TODO?
-    }}
+    }
 
     return $request
 }
@@ -529,7 +547,7 @@ proc wibble::getresponse {request} {
     dict set fallback content "not implemented: [dict get $request uri]\n"
 
     # Process all zones.
-    dict for {prefix handlers} $zones {
+    foreach {prefix handlers} $zones {
         set match $prefix
         if {[string index $match end] ne "/"} {
             append match /
@@ -585,12 +603,12 @@ proc wibble::getresponse {request} {
 }
 
 # Main connection processing loop.
-proc wibble::process {socket peerhost peerport} {
+proc wibble::process {port socket peerhost peerport} {
     try {
         chan configure $socket -blocking 0
         while {1} {
             # Get request from client, then formulate a response to the reqeust.
-            set request [getrequest $socket $peerhost $peerport]
+            set request [getrequest $port $socket $peerhost $peerport]
             set response [getresponse $request]
 
             # Get the content size.
@@ -633,7 +651,7 @@ proc wibble::process {socket peerhost peerport} {
 
             # Send the response header to the client.
             chan puts $socket "HTTP/1.1 [dict get $response status]"
-            dict for {key val} [dict get $response header] {
+            foreach {key val} [dict get $response header] {
                 set normalizedkey [lsearch -exact -sorted -inline -nocase {
                     Accept-Ranges Age Allow Cache-Control Connection
                     Content-Disposition Content-Encoding Content-Language
@@ -674,24 +692,20 @@ proc wibble::process {socket peerhost peerport} {
         # Log errors and report them to the client, if possible.
         variable errorcount
         incr errorcount
-        set message "*** INTERNAL SERVER ERROR (BEGIN #$errorcount) ***\n"
-        append message "time: [clock format [clock seconds]]\n"
-        append message "address: $peerhost\n"
+        set message "*** INTERNAL SERVER ERROR (BEGIN #$errorcount) ***"
         if {[info exists request]} {
-            dict for {key val} $request {
-                if {$key eq "content" && [string length $val] > 256} {
-                    append message "request $key (len=[string length $val])\n"
-                } elseif {$key in {header accept query post}} {
-                    dict for {subkey subval} $val {
-                        append message "request $key $subkey: $subval\n"
-                    }
-                } else {
-                    append message "request $key: $val\n"
-                }
+            foreach {key val} [dumprequest $request] {
+                append message "\n$key: $val"
             }
+        } else {
+            append message "\nsocket: $socket"
+            append message "\npeerhost: $peerhost"
+            append message "\npeerport: $peerport"
+            append message "\nrawtime: [clock seconds]"
+            append message "\ntime: [clock format [clock seconds]]"
         }
-        append message "errorinfo: [dict get $options -errorinfo]\n"
-        append message "*** INTERNAL SERVER ERROR (END #$errorcount) ***\n"
+        append message "\nerrorinfo: [dict get $options -errorinfo]"
+        append message "\n*** INTERNAL SERVER ERROR (END #$errorcount) ***"
         log $message
         catch {
             set message [encoding convertto iso8859-1 $message]
@@ -702,30 +716,27 @@ proc wibble::process {socket peerhost peerport} {
             chan puts $socket "Connection: close"
             chan puts $socket ""
             chan configure $socket -translation binary
-            chan puts -nonewline $socket $message
+            chan puts $socket $message
         }
     } finally {
         catch {chan close $socket}
     }
 }
 
-# Accept an incoming connection.
-proc wibble::accept {socket peerhost peerport} {
-    chan event $socket readable [namespace code $socket]
-    coroutine $socket [namespace current]::process $socket $peerhost $peerport
-}
-
 # Listen for incoming connections.
 proc wibble::listen {port} {
-    socket -server [namespace code accept] $port
+    socket -server [list apply [list {port socket phost pport} {
+        chan event $socket readable [namespace code $socket]
+        coroutine $socket [namespace code process] $port $socket $phost $pport
+    } [namespace current]] $port] $port
 }
 
 # Log an error.  Feel free to replace this procedure as needed.
 proc wibble::log {message} {
-    chan puts -nonewline stderr $message
+    chan puts stderr $message
 }
 
-# ================================ TEST CODE ===================================
+# =============================== EXAMPLE CODE =================================
 
 # Demonstrate Wibble if being run directly.
 if {$argv0 eq [info script]} {
@@ -738,6 +749,7 @@ if {$argv0 eq [info script]} {
     wibble::handle / indexfile root $root indexfile index.html
     wibble::handle / static root $root
     wibble::handle / template root $root
+    wibble::handle / script root $root
     wibble::handle / dirlist root $root
     wibble::handle / notfound
 

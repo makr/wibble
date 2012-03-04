@@ -1,3 +1,30 @@
+**2010-11-07 - Separate templates and scripts, improved request dictionary reporting**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=11];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=11&D=6&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=11&D=6&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc40fc9a27]
+
+AMG: Now that I've finished reorganizing all the Wibble pages, I'm eager to edit them some more! :^)
+
+* Write [dumprequest] to partially "flatten" a request dictionary to make it easier to display.
+* Make the output of the vars zone handler much nicer.
+* Make the error log nicer too.
+* Split the template zone handler into two pieces:
+** [template]: Compile *.tmpl files into *.script files.
+** [script]: Execute *.script files.
+* Add rawtime, time, and port to the request dictionary.
+* Completely remove PUT.
+* Slightly simplify POST handling.
+* Replace [dict for] with [foreach] to support duplicate keys.
+* Improve the failsafe ![[info exists] $request] error log.
+* Remove -nonewline option from [log].
+* Move \n from the end to the beginning of the line.
+* Add new script zone handler to example code.
+* Remove special logging of the never-implemented "content" key in the request dictionary.
+* Remove [accept] and changed [listen] to use [apply].
+
+
 **2010-11-06 - Header and POST parsing**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=4];
