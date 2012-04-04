@@ -1,3 +1,21 @@
+**2012-04-01 - April Fool's special edition**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=29];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=29&D=28&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=29&D=28&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetocfe0a5a45]
+
+AMG: Any bugs introduced by this release are intentional April Fool's pranks, not careless mistakes.
+
+* Add [dict getnull] command to simplify the common task of checking if a dict key exists before getting its value.  It's very common to want to treat missing values as empty, so this new command makes sense.
+* Double the performance of [dehex].
+* Simplify [icc::catch] a tiny bit.
+* Remove some looping and [set]s in the path normalization code in [getrequest].
+* Allow for custom POST content-types such as application/json-rpc.
+* Let the application replace [socket] with a custom command, e.g. [tls::socket].
+* Add rudimentary [history] support to the command entry window, used when running Wibble with [wish] on a platform where there's no [console] command.
+* Bump version number.  I should do this every time...
+
 **2011-11-28 - [icc catch] fix**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=28];

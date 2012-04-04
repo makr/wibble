@@ -1,10 +1,10 @@
 #!/usr/bin/env tclsh
 # Wibble - a pure-Tcl Web server.  http://wiki.tcl.tk/23626
-# Copyright 2011 Andy Goth.  mailto/andrew.m.goth/at/gmail/dot/com
+# Copyright 2012 Andy Goth.  mailto/andrew.m.goth/at/gmail/dot/com
 # Available under the Tcl/Tk license.  http://tcl.tk/software/tcltk/license.html
 
 package require Tcl 8.6
-package provide wibble 0.2
+package provide wibble 0.3
 
 # Define the wibble namespace.
 namespace eval ::wibble {
@@ -168,6 +168,15 @@ proc ::wibble::zone::notfound {state} {
 
 # ============================ utility procedures =============================
 
+# [dict getnull] is like [dict get] but returns empty string for missing keys.
+proc ::tcl::dict::getnull {dictionary args} {
+    if {[exists $dictionary {*}$args]} {
+        get $dictionary {*}$args
+    }
+}
+namespace ensemble configure dict -map [dict replace\
+    [namespace ensemble configure dict -map] getnull ::tcl::dict::getnull]
+
 # Expand a template.
 proc ::wibble::template {body} {
     set script ""
@@ -305,13 +314,8 @@ proc ::wibble::enhex {str {pattern {[^-^,./'=+|!$\w]}}} {
 
 # Decode hexadecimal encoding.
 proc ::wibble::dehex {str} {
-    set pos 0
-    while {[regexp -indices -start $pos {%([[:xdigit:]]{2})} $str range code]} {
-        set char [binary format H2 [string range $str {*}$code]]
-        set str [string replace $str {*}$range $char]
-        set pos [expr {[lindex $range 0] + 1}]
-    }
-    return $str
+    subst -novariables -nocommands\
+        [regsub -all {%([[:xdigit:]]{2})} [string map {\\ \\\\} $str] {\\u00\1}]
 }
 
 # Encode an HTTP time/date.
@@ -804,8 +808,7 @@ proc ::wibble::icc::get {fids filters {timeout ""}} {
 
     # Restart the lapse timeouts for the feeds monitored by this coroutine.
     foreach fid $fids {
-        if {[dict exists $feeds $fid]
-         && [dict get $feeds $fid lapsetime] ne ""} {
+        if {[dict getnull $feeds $fid lapsetime] ne ""} {
             after cancel [dict get $feeds $fid lapsecancel]
             dict set feeds $fid lapsecancel [after [dict get $feeds $fid\
                 lapsetime] [list ::wibble::icc::lapse $fid]]
@@ -820,7 +823,7 @@ proc ::wibble::icc::get {fids filters {timeout ""}} {
 # that script.  Other events may be returned too, but only if they happened in
 # the same batch as an exception event.
 proc ::wibble::icc::catch {script} {
-    tailcall try $script on 7 events {set events} on ok "" {list}
+    tailcall try $script on 7 events {set events} on ok "" {}
 }
 
 # Send event data to the named feeds, or all if "*".
@@ -910,11 +913,9 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
     # Receive and parse the first line.  Normalize the path.
     regexp {^\s*(\S*)\s+(\S*)\s+(\S*)} [getline] _ method uri protocol
     regexp {^([^?]*)(\?.*)?$} $uri _ path query
-    set path [regsub -all {(?:/|^)\.(?=/|$)} [dehex $path] /]
-    while {[regexp -indices {(?:/[^/]*/+|^[^/]*/+|^)\.\.(?=/|$)} $path range]} {
-        set path [string replace $path {*}$range ""]
-    }
-    set path [regsub -all {//+} /$path /]
+    regsub -all {(?:/|^)\.(?=/|$)} [dehex $path] / path
+    while {[regsub {(?:/[^/]*/+|^[^/]*/+|^)\.\.(?=/|$)} $path "" path]} {}
+    regsub -all {//+} /$path / path
 
     # Start building the request structure.
     set request [dict create socket $chan peerhost $peerhost peerport $peerport\
@@ -940,8 +941,7 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
         if {[dict exists $request header $header]} {
             set options {}
             dict for {option params} [dict get $request header $header] {
-                if {![dict exists $params q]
-                 || ![string is double -strict [dict get $params q]]} {
+                if {![string is double -strict [dict getnull $params q]]} {
                     lappend options [list $option 1]
                 } elseif {[dict get $params q] > 0} {
                     lappend options [list $option [dict get $params q]]
@@ -957,8 +957,7 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
     # Get and parse the request body, if there is one.
     if {$method eq "POST"} {
         # Get the request body.
-        if {[dict exists $request header transfer-encoding]
-         && [dict get $request header transfer-encoding] eq "chunked"} {
+        if {[dict getnull $request header transfer-encoding] eq "chunked"} {
             # Receive chunked request body.
             set data ""
             while {[scan [getline] %x length] == 1 && $length > 0} {
@@ -972,19 +971,17 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
             set data [getblock [dict get $request header content-length]]
             chan configure $chan -translation crlf
         }
-
-        # Parse the request body.
         dict set request rawpost $data
-        set post ""
-        switch [if {[dict exists $request header content-type ""]} {
-            dict get $request header content-type ""
-        }] {
+
+        # Parse the request body for known content-types.
+        switch [dict getnull $request header content-type ""] {
         multipart/form-data {
             # Interpret multipart/form-data (required for file uploads).
             set data \r\n$data
             set sep \r\n--[dict get $request header content-type boundary]
             set beg [expr {[string first $sep $data] + 2}]
             set end [expr {[string first $sep $data $beg] - 1}]
+            set post ""
             while {$beg < $end} {
                 set beg [expr {[string first \n $data $beg] + 1}]
                 set part [string range $data $beg $end]
@@ -992,16 +989,14 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
                 set val [deheader [string map {\r ""}\
                     [string range $part 0 [expr {$split - 1}]]]]
                 dict set val "" [string range $part [expr {$split + 4}] end]
-                if {[dict exists $val content-disposition name]} {
-                    lappend post [dict get $val content-disposition name] $val
-                } else {
-                    lappend post "" $val
-                }
+                lappend post [dict getnull $val content-disposition name] $val
                 set beg [expr {$end + 3}]
                 set end [expr {[string first $sep $data $beg] - 1}]
             }
+            dict set request post $post
         } text/plain {
             # Interpret text/plain POSTs.
+            set post ""
             foreach elem [lrange [split $data \n] 0 end-1] {
                 regexp {([^\r=]*)(?:(=[^\r]*))?} $elem _ key val
                 if {$val ne ""} {
@@ -1009,14 +1004,14 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
                 }
                 lappend post $key $val
             }
+            dict set request post $post
         } text/xml {
-            # Interpret text/xml POSTs.
-            dict set post xml "" [dehex $data]
-        } application/x-www-form-urlencoded - default {
-            # Interpret URL-encoded POSTs (the default).
-            set post [dequery $data]
+            # Interpret text/xml POSTs, used for Web Services.
+            dict set request post xml "" [dehex $data]
+        } application/x-www-form-urlencoded - "" {
+            # Interpret URL-encoded POSTs.
+            dict set request post [dequery $data]
         }}
-        dict set request post $post
     }
 
     # The request has been received and parsed.  Return it to the caller.
@@ -1094,13 +1089,11 @@ proc ::wibble::defaultsend {socket request response} {
         set size [string length [dict get $response content]]
     }
 
-    # Parse range request header, and add content-range/-length headers.
+    # Parse range request header, and add content-range and -length headers.
     set begin 0
     set end [expr {$size - 1}]
-    if {[dict exists $request header range]
-     && [regexp {^bytes=(\d*)-(\d*)$} [dict get $request header range]\
-            _ begin end]
-     && [dict get $response status] == 200} {
+    if {[regexp {^bytes=(\d*)-(\d*)$} [dict getnull $request header range]\
+            _ begin end] && [dict get $response status] == 200} {
         dict set response status 206
         if {$begin eq "" || $begin >= $size} {
             set begin 0
@@ -1143,8 +1136,8 @@ proc ::wibble::defaultsend {socket request response} {
     }
 
     # Return 1 to keep going or 0 if the connection needs to close.
-    expr {![dict exists $request header connection]
-       || ![string equal -nocase [dict get $request header connection] close]}
+    expr {![string equal -nocase\
+        [dict getnull $request header connection] close]}
 }
 
 # Main connection processing loop.
@@ -1196,8 +1189,8 @@ proc ::wibble::process {port socket peerhost peerport} {
 }
 
 # Listen for incoming connections.
-proc ::wibble::listen {port} {
-    socket -server [list apply {{port socket peerhost peerport} {
+proc ::wibble::listen {port {socketcommand socket}} {
+    {*}$socketcommand -server [list apply {{port socket peerhost peerport} {
         coroutine $socket ::wibble::process $port $socket $peerhost $peerport
     } ::wibble} $port] $port
 }
@@ -1305,11 +1298,13 @@ video/quicktime ^(?:mov|qt)$                  video/x-ms-wmv ^wmv$
         pack [text .e -height 2] -fill both -expand 1
         bind .e <Return> {
             if {!(%s & 4) && [info complete [set command [.e get 0.1 end]]]} {
+                set nextid [history nextid]
+                history add $command
                 if {![catch $command result]} {
-                    ::wibble::log "%% $command<OK>$result"
+                    ::wibble::log "$nextid %% $command<OK>$result"
                     .e delete 0.1 end
                 } else {
-                    ::wibble::log "%% $command<ERROR>$result"
+                    ::wibble::log "$nextid %% $command<ERROR>$result"
                 }
                 break
             }
