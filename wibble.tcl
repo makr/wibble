@@ -4,7 +4,7 @@
 # Available under the Tcl/Tk license.  http://tcl.tk/software/tcltk/license.html
 
 package require Tcl 8.6
-package provide wibble 0.3
+package provide wibble 0.4
 
 # Define the wibble namespace.
 namespace eval ::wibble {
@@ -255,16 +255,17 @@ proc ::wibble::getblock {size} {
 
 # ==================== conversion and parsing procedures ======================
 
-# Encode for HTML by substituting angle brackets, ampersands, line breaks, and
-# space sequences.
+# Encode for HTML by substituting angle brackets, ampersands, space sequences,
+# and line breaks.
 proc ::wibble::enhtml {str} {
     string map {< &lt; > &gt; & &amp; \r "" \n "<br />\n" "  " \ &\#160;} $str
 }
 
 # Encode for HTML tag attribute by substituting angle brackets, ampersands,
-# double quotes, and space sequences.
+# space sequences, and single and double quotes.
 proc ::wibble::enattr {str} {
-    string map {< &lt; > &gt; & &amp; \r "" \n "" \" &quot; "  " \ &\#160;} $str
+    string map {< &lt; > &gt; & &amp; \r "" \n "" "  " \ &\#160;
+                ' &apos; \" &quot;} $str
 }
 
 # Encode for HTML <pre> by substituting angle brackets and ampersands.
@@ -1309,6 +1310,7 @@ video/quicktime ^(?:mov|qt)$                  video/x-ms-wmv ^wmv$
                 break
             }
         }
+        focus .e
     }
 }
 

@@ -1,3 +1,17 @@
+**2012-04-13 - Friday the Thirteenth special edition**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=31];
+Line differences: [http://wiki.tcl.tk/_/diff?N=27377&V=31&D=29&W=0];
+Word differences: [http://wiki.tcl.tk/_/diff?N=27377&V=31&D=29&W=1];
+Announcement: [http://wiki.tcl.tk/27383#pagetoc42e963e2]
+
+AMG: Only two things are fixed in this version.
+
+   * Quote ' (apostrophe) as &apos; in HTML attributes.
+   * Automatically focus the entry widget when using the non-[console] Tk command interface.
+   * Bump version number.  Yeah, I forgot to do this in page version 30.
+
+
 **2012-04-01 - April Fool's special edition**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=29];
@@ -15,6 +29,7 @@ AMG: Any bugs introduced by this release are intentional April Fool's pranks, no
 * Let the application replace [socket] with a custom command, e.g. [tls::socket].
 * Add rudimentary [history] support to the command entry window, used when running Wibble with [wish] on a platform where there's no [console] command.
 * Bump version number.  I should do this every time...
+
 
 **2011-11-28 - [icc catch] fix**
 
