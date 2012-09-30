@@ -4,11 +4,15 @@
 # Available under the Tcl/Tk license.  http://tcl.tk/software/tcltk/license.html
 
 package require Tcl 8.6
-package provide wibble 0.4
 
 # Define the wibble namespace.
 namespace eval ::wibble {
     variable zonehandlers
+
+    # New: activate performance-enhancing features by setting these to 1.
+    # As is, default behavior is unchanged.
+    variable prequalify_handlers 0
+    variable conserve_post_memory 0
 }
 
 # ============================== zone handlers ================================
@@ -220,11 +224,20 @@ proc ::wibble::dumpstate {data {prefix ""}} {
     return $result
 }
 
+# New: create and maintain namespace var with current time in secs,
+# to save excessive calls to [clock seconds]
+proc ::wibble::update_clock_seconds {} {
+    variable clock_seconds
+    set clock_seconds [clock seconds]
+    after 250 ::wibble::update_clock_seconds
+}
+
 # ========================= network input procedures ==========================
 
 # Get a line of data from the current coroutine's socket.
 proc ::wibble::getline {} {
-    set socket [namespace tail [info coroutine]]
+    set info_coroutine [info coroutine]
+    set socket [namespace tail $info_coroutine]
     while {1} {
         if {[chan gets $socket line] >= 0} {
             return $line
@@ -233,13 +246,14 @@ proc ::wibble::getline {} {
         } elseif {[chan pending input $socket] > 4096} {
             error "line length exceeds limit of 4096 bytes"
         }
-        icc get [info coroutine] readable
+        icc get $info_coroutine readable
     }
 }
 
 # Get a block of data from the current coroutine's socket.
 proc ::wibble::getblock {size} {
-    set socket [namespace tail [info coroutine]]
+    set info_coroutine [info coroutine]
+    set socket [namespace tail $info_coroutine]
     while {1} {
         set chunklet [chan read $socket $size]
         set size [expr {$size - [string length $chunklet]}]
@@ -249,7 +263,7 @@ proc ::wibble::getblock {size} {
         } elseif {$size == 0} {
             return $chunk
         }
-        icc get [info coroutine] readable
+        icc get $info_coroutine readable
     }
 }
 
@@ -294,10 +308,10 @@ proc ::wibble::dequery {str} {
     foreach elem [split $str &] {
         regexp {^([^=]*)(?:(=.*))?$} $elem _ key val
         if {$val ne ""} {
-            set val [list "" [dehex [string map {+ " "}\
-                [string range $val 1 end]]]]
+            set val [list "" [decode \
+                [string range $val 1 end]]]
         }
-        lappend query [dehex [string map {+ " "} $key]] $val
+        lappend query [decode $key] $val
     }
     return $query
 }
@@ -319,11 +333,18 @@ proc ::wibble::dehex {str} {
         [regsub -all {%([[:xdigit:]]{2})} [string map {\\ \\\\} $str] {\\u00\1}]
 }
 
+# New: replace dehex in places to save extra call to [string map]
+proc ::wibble::decode {str} {
+    subst -novariables -nocommands\
+        [regsub -all {%([[:xdigit:]]{2})} [string map {+ { } \\ \\\\} $str] {\\u00\1}]
+}
+
 # Encode an HTTP time/date.
 proc ::wibble::entime {time} {
+    variable clock_seconds
     switch [lindex $time 0] {
         abstime {set time [lindex $time 1]}
-        reltime {set time [expr {[clock seconds] + [lindex $time 1]}]}
+        reltime {set time [expr {$clock_seconds + [lindex $time 1]}]}
     }
     clock format $time -format "%a %d-%b-%Y %T %Z" -timezone :GMT
 }
@@ -886,14 +907,77 @@ proc ::wibble::sendresponse {response} {
     return -code 6 $response
 }
 
+# New: force refresh of handlers and try again with new request settings.
+proc ::wibble::retryrequest {request} {
+    return -code 7 $request
+}
+
 # Register a zone handler.
+
+# New: in parallel with list, create hierarchical dict of handlers, from which 
+# only handlers matching request path can be easily extracted.
 proc ::wibble::handle {prefix cmd args} {
     variable zonehandlers
+    variable zh_dict
+    set prefix [file join / $prefix]
     set name [namespace eval zone [list namespace which [lindex $cmd 0]]]
     if {$name eq ""} {
         error "invalid command name \"$cmd\""
     }
-    lappend zonehandlers $prefix [concat [list $name] [lrange $cmd 1 end]] $args
+    set command [concat [list $name] [lrange $cmd 1 end]]
+    lappend zonehandlers $prefix $command $args
+    set h_count [expr [llength $zonehandlers]/3 - 1]
+    dict set zh_dict {*}[file split $prefix/handlers\x0/$h_count] [list $prefix $command $args]
+    
+    # New: return place of newly-added handler in list.
+    return $h_count
+}
+
+# New: change place of handler in zonehandlers list.
+proc ::wibble::promote_handler {old new} {
+    variable zonehandlers
+    set old [expr $old * 3]
+    set new [expr $new * 3]
+    set handler [lrange $zonehandlers $old $old+2]
+    set zonehandlers [lreplace $zonehandlers $old $old+2]
+    set zonehandlers [linsert $zonehandlers $new {*}$handler]
+    build_zone_dict
+}
+
+# New: utility to rebuild zonehandlers dict from scratch.
+proc ::wibble::build_zone_dict {} {
+    variable zonehandlers
+    variable zh_dict
+    set zh_dict [dict create]
+    set h_count 0
+    foreach {prefix command options} $zonehandlers {
+        dict set zh_dict {*}[file split $prefix/handlers\x0/$h_count] [list $prefix $command $options]
+        incr h_count
+    }
+}
+
+# New: return only handlers that are valid matches for give path.
+proc ::wibble::get_handlers {path} {
+    variable zonehandlers
+    variable prequalify_handlers
+    variable zh_dict
+
+    if {!$prequalify_handlers} {
+        return $zonehandlers
+    }
+
+    set zhandlers [list]
+    set handler_dict [dict create]
+    foreach segment [file split $path] {
+        lappend subpath $segment
+        if {[dict exists $zh_dict {*}$subpath handlers\x0]} {
+            set handler_dict [dict merge $handler_dict [dict get $zh_dict {*}$subpath handlers\x0]]
+        }
+    }
+    foreach key [lsort -dict [dict keys $handler_dict]] {
+        lappend zhandlers {*}[dict get $handler_dict $key]
+    }
+    return $zhandlers
 }
 
 # Add, modify, or cancel coroutine cleanup scripts.
@@ -908,6 +992,10 @@ proc ::wibble::cleanup {key script} {
 
 # Get an HTTP request from a client.
 proc ::wibble::getrequest {port chan peerhost peerport} {
+    variable clock_seconds
+    variable conserve_post_memory
+    upvar request request
+    upvar post post
     # The HTTP header uses CR/LF line breaks.
     chan configure $chan -translation crlf
 
@@ -920,7 +1008,7 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
 
     # Start building the request structure.
     set request [dict create socket $chan peerhost $peerhost peerport $peerport\
-        port $port rawtime [clock seconds] time [clock format [clock seconds]]\
+        port $port rawtime $clock_seconds time [clock format $clock_seconds]\
         method $method uri $uri path $path protocol $protocol rawheader {}]
 
     # Parse the query string.
@@ -994,7 +1082,22 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
                 set beg [expr {$end + 3}]
                 set end [expr {[string first $sep $data $beg] - 1}]
             }
-            dict set request post $post
+
+            # New: Post data is potentially huge.  Instead of passing multiple
+            # copies down call stack, preserve in local variables one level up
+            # and store relevant stack level in state dict.  Handlers can access
+            # post data via upvar.
+            unset data
+            if {$conserve_post_memory} {
+                set upper_level [expr [info level] - 1]
+                uplevel [list set rawpost [dict get $request rawpost]]
+                dict set request rawpost $upper_level
+                dict set request post $upper_level
+            } else {
+                dict set request post $post
+                unset post
+            }
+
         } text/plain {
             # Interpret text/plain POSTs.
             set post ""
@@ -1016,49 +1119,69 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
     }
 
     # The request has been received and parsed.  Return it to the caller.
-    return $request
+    return
 }
 
 # Get a response from the zone handlers.
-proc ::wibble::getresponse {request} {
-    variable zonehandlers
+proc ::wibble::getresponse {} {
+    variable prequalify_handlers
+    upvar request request
+
+    # New: optionally get prequalified handlers guaranteed to match request path
+    # thus eliminating need to check path against every handler every time.
+    # Feature activated if prequalify_handlers set to 1, otherwise behavior 
+    # unchanged.
+    set zonehandlers [get_handlers [dict get $request path]]
     set system [list [dict create options {} request $request response {}]]
 
     # Process all zone handlers.
     foreach {prefix command options} $zonehandlers {
-        set match $prefix
-        if {[string index $match end] ne "/"} {
-            append match /
-        }
 
         # Run the zone handler on all states with request paths inside the zone.
         set i 0
         foreach state $system {
             set path [dict get $state request path]
-            if {$path eq $prefix
-             || [string equal -length [string length $match] $match $path]} {
-                set suffix [string range $path [string length $prefix] end]
+
+            # New: use slightly more efficient path matching method, and
+            # eliminate a nesting level in loop.
+            if {!$prequalify_handlers && $prefix ne "/" && [string first $prefix/ $path/]} {
+                incr i
+                continue
+            }
+
+            set suffix [string range $path [string length $prefix] end]
 
                 # Replace the options in the state dict.
-                dict set state options $options
-                dict set state options prefix $prefix
-                dict set state options suffix $suffix
-                if {[dict exists $options root]} {
-                    dict set state options fspath\
-                        [dict get $options root]/$suffix
-                }
-
-                # Invoke the handler and process its outcome.
-                try {
-                    {*}$command $state
-                } on 5 outcome {
-                    # [nexthandler]: Update the system and continue processing.
-                    set system [lreplace $system $i $i {*}$outcome]
-                } on 6 outcome {
-                    # [sendresponse]: A response has been obtained.  Return it.
-                    return $outcome
-                }
+            dict set state options $options
+            dict set state options prefix $prefix
+            dict set state options suffix $suffix
+            if {[dict exists $options root]} {
+                dict set state options fspath\
+                    [file normalize [dict get $options root]/$suffix]
             }
+
+            # Invoke the handler and process its outcome.
+            try {
+                {*}$command $state
+            } on 5 outcome {
+                # [nexthandler]: Update the system and continue processing.
+                set system [lreplace $system $i $i {*}$outcome]
+                unset outcome
+            } on 6 outcome {
+                # [sendresponse]: A response has been obtained.  Return it.
+                return $outcome
+            } on 7 outcome {
+                # New: If handler radically rewrites request path, optionally
+                # start getrequest process over again with refreshed set of 
+                # handlers to match against.
+
+                # [retryrequest]: New attempt to get response with altered 
+                #                 request parameters.
+                set request $outcome
+                unset outcome
+                return [getresponse]
+            }
+
             incr i
         }
     }
@@ -1069,20 +1192,29 @@ proc ::wibble::getresponse {request} {
 }
 
 # Default send handler: send the response to the client using HTTP.
-proc ::wibble::defaultsend {socket request response} {
+proc ::wibble::defaultsend {socket} {
+    variable clock_seconds
+    upvar request request response response
+
     # Get the content channel and/or size.
     set size 0
+    set dict_get_request_method [dict get $request method]
+    set dict_get_response_status [dict get $response status]
     if {[dict exists $response contentfile]} {
-        set size [file size [dict get $response contentfile]]
-        if {[dict get $request method] ne "HEAD"} {
-            set file [open [dict get $response contentfile]]
+        set dict_get_response_contentfile [dict get $response contentfile]
+        set size [file size $dict_get_response_contentfile]
+        if {$dict_get_request_method ne "HEAD"} {
+            set file [open $dict_get_response_contentfile]
             cleanup close_content_file [list chan close $file]
         }
     } elseif {[dict exists $response contentchan]} {
+        # New: make channel handling case more similar to file handling case.
+        set file [dict get $response contentchan]
         if {[dict exists $response contentsize]} {
             set size [dict get $response contentsize]
+        } else {
+            set size [chan pending input $file]
         }
-        set file [dict get $response contentchan]
         cleanup close_content_file [list chan close $file]
     } elseif {[dict exists $response content]} {
         dict set response content [encoding convertto iso8859-1\
@@ -1094,7 +1226,7 @@ proc ::wibble::defaultsend {socket request response} {
     set begin 0
     set end [expr {$size - 1}]
     if {[regexp {^bytes=(\d*)-(\d*)$} [dict getnull $request header range]\
-            _ begin end] && [dict get $response status] == 200} {
+            _ begin end] && $dict_get_response_status == 200} {
         dict set response status 206
         if {$begin eq "" || $begin >= $size} {
             set begin 0
@@ -1104,21 +1236,22 @@ proc ::wibble::defaultsend {socket request response} {
         }
         dict set response header content-range "bytes $begin-$end/$size"
     }
-    dict set response header content-length [expr {$end - $begin + 1}]
+    set end_begin_1 [expr {$end - $begin + 1}]
+    dict set response header content-length $end_begin_1
 
     # Send the response header to the client.
-    chan puts $socket "HTTP/1.1 [dict get $response status]"
+    chan puts $socket "HTTP/1.1 $dict_get_response_status"
     chan puts $socket [enheader [dict get $response header]]\n
 
     # If requested, send the response content to the client.
-    if {[dict get $request method] ne "HEAD"} {
+    if {$dict_get_request_method ne "HEAD"} {
         chan configure $socket -translation binary
         if {[info exists file]} {
             # Asynchronously send response content from a channel.
             set coro [info coroutine]
             chan configure $file -translation binary
             chan seek $file $begin
-            chan copy $file $socket -size [expr {$end - $begin + 1}]\
+            chan copy $file $socket -size $end_begin_1 \
                 -command [list ::wibble::icc put $coro copydone]
             if {[llength [set data [icc get $coro copydone]]] == 3} {
                 error [lindex $data 2]
@@ -1153,21 +1286,25 @@ proc ::wibble::process {port socket peerhost peerport} {
 
         # Main loop.
         while {1} {
-            # Get request from client, then formulate a response to the reqeust.
-            set request [getrequest $port $socket $peerhost $peerport]
-            set response [getresponse $request]
+            # Get request from client, then formulate a response to the request.
+
+            # New: getrequest and getresponse are accessed from this level via
+            # upvar rather than passed as args, to save copying time and memory.
+            getrequest $port $socket $peerhost $peerport
+            set response [getresponse]
 
             # Determine which command should be used to send the response.
             if {[dict exists $response sendcommand]} {
-                set sendcommand [dict get $response sendcommand]
+                set sendcommand [list [dict get $response sendcommand] $socket $request $response]
+                unset request response
             } else {
-                set sendcommand ::wibble::defaultsend
+                set sendcommand "::wibble::defaultsend $socket"
             }
 
             # Invoke the send command, and terminate or continue as requested.
-            if {[{*}$sendcommand $socket $request $response]} {
+            if {[{*}$sendcommand]} {
                 catch {chan flush $socket}
-                unset request response
+                unset -nocomplain sendcommand request response
             } else {
                 chan close $socket
                 break
@@ -1191,6 +1328,10 @@ proc ::wibble::process {port socket peerhost peerport} {
 
 # Listen for incoming connections.
 proc ::wibble::listen {port {socketcommand socket}} {
+    variable clock_seconds
+    # New: start storing and updating current time in namespace var to save 
+    # having to do multiple redundant calls to [clock seconds]
+    if {![info exists clock_seconds]} {update_clock_seconds}
     {*}$socketcommand -server [list apply {{port socket peerhost peerport} {
         coroutine $socket ::wibble::process $port $socket $peerhost $peerport
     } ::wibble} $port] $port
@@ -1205,6 +1346,7 @@ proc ::wibble::log {message} {
 
 # Log errors and report them to the client, if possible.  Customize as needed.
 proc ::wibble::panic {options port socket peerhost peerport request response} {
+    variable clock_seconds
     variable errorcount
     incr errorcount
     set message "*** INTERNAL SERVER ERROR (BEGIN #$errorcount) ***"
@@ -1217,8 +1359,8 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
         append message "\nsocket: $socket"
         append message "\npeerhost: $peerhost"
         append message "\npeerport: $peerport"
-        append message "\nrawtime: [clock seconds]"
-        append message "\ntime: [clock format [clock seconds]]"
+        append message "\nrawtime: $clock_seconds"
+        append message "\ntime: [clock format $clock_seconds]"
     }
     append message "\nerrorinfo: [dict get $options -errorinfo]"
     append message "\n*** INTERNAL SERVER ERROR (END #$errorcount) ***"
@@ -1236,6 +1378,8 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
         }
     }
 }
+
+package provide wibble 0.4.1
 
 # =============================== example code ================================
 

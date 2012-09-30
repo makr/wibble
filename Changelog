@@ -1,3 +1,12 @@
+**2012-09-21**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377&V=32]
+
+SEH: On the implementation page I've imposed on Andy's invitation to make code changes by submitting a version I've labeled 0.4.1.
+
+I've eliminated many redundant function calls by storing the result of the first call in a variable and using the variable subsequently. For example, every connection makes several calls to clock seconds. At low loads it hardly matters, but if you're handling dozens or hundreds of connections per second, that's a lot of redundant calls. In this case I created a namespace variable called clock_seconds which is updated by a proc that calls itself every quarter second. All procs in Wibble read that variable rather than call clock seconds directly.
+
+
 **2012-04-13 - Friday the Thirteenth special edition**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377.code&V=31];
@@ -7,9 +16,9 @@ Announcement: [http://wiki.tcl.tk/27383#pagetoc42e963e2]
 
 AMG: Only two things are fixed in this version.
 
-   * Quote ' (apostrophe) as &apos; in HTML attributes.
-   * Automatically focus the entry widget when using the non-[console] Tk command interface.
-   * Bump version number.  Yeah, I forgot to do this in page version 30.
+* Quote ' (apostrophe) as &apos; in HTML attributes.
+* Automatically focus the entry widget when using the non-[console] Tk command interface.
+* Bump version number.  Yeah, I forgot to do this in page version 30.
 
 
 **2012-04-01 - April Fool's special edition**
