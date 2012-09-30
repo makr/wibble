@@ -1,3 +1,10 @@
+**2012-09-22**
+
+Release version: [http://wiki.tcl.tk/_/revision?N=27377&V=33]
+
+SEH -- ver. 0.4.2: pulled out some unnecessary changes in how request and response vars are handled.
+
+
 **2012-09-21**
 
 Release version: [http://wiki.tcl.tk/_/revision?N=27377&V=32]

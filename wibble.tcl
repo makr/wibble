@@ -994,7 +994,6 @@ proc ::wibble::cleanup {key script} {
 proc ::wibble::getrequest {port chan peerhost peerport} {
     variable clock_seconds
     variable conserve_post_memory
-    upvar request request
     upvar post post
     # The HTTP header uses CR/LF line breaks.
     chan configure $chan -translation crlf
@@ -1083,10 +1082,11 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
                 set end [expr {[string first $sep $data $beg] - 1}]
             }
 
-            # New: Post data is potentially huge.  Instead of passing multiple
-            # copies down call stack, preserve in local variables one level up
-            # and store relevant stack level in state dict.  Handlers can access
-            # post data via upvar.
+            # New: Post data is potentially huge.  To prevent possibility of 
+            # unnecessary copying, optionally store it exclusively in local 
+            # variables one level up and store relevant stack level in state 
+            # dict.  Handlers can access post data via upvar by referencing 
+            # stored level.
             unset data
             if {$conserve_post_memory} {
                 set upper_level [expr [info level] - 1]
@@ -1119,13 +1119,12 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
     }
 
     # The request has been received and parsed.  Return it to the caller.
-    return
+    return $request
 }
 
 # Get a response from the zone handlers.
-proc ::wibble::getresponse {} {
+proc ::wibble::getresponse {request} {
     variable prequalify_handlers
-    upvar request request
 
     # New: optionally get prequalified handlers guaranteed to match request path
     # thus eliminating need to check path against every handler every time.
@@ -1177,9 +1176,7 @@ proc ::wibble::getresponse {} {
 
                 # [retryrequest]: New attempt to get response with altered 
                 #                 request parameters.
-                set request $outcome
-                unset outcome
-                return [getresponse]
+                return [getresponse $outcome]
             }
 
             incr i
@@ -1192,9 +1189,8 @@ proc ::wibble::getresponse {} {
 }
 
 # Default send handler: send the response to the client using HTTP.
-proc ::wibble::defaultsend {socket} {
+proc ::wibble::defaultsend {socket request response} {
     variable clock_seconds
-    upvar request request response response
 
     # Get the content channel and/or size.
     set size 0
@@ -1288,23 +1284,19 @@ proc ::wibble::process {port socket peerhost peerport} {
         while {1} {
             # Get request from client, then formulate a response to the request.
 
-            # New: getrequest and getresponse are accessed from this level via
-            # upvar rather than passed as args, to save copying time and memory.
-            getrequest $port $socket $peerhost $peerport
-            set response [getresponse]
+            set request [getrequest $port $socket $peerhost $peerport]
+            set response [getresponse $request]
 
             # Determine which command should be used to send the response.
             if {[dict exists $response sendcommand]} {
-                set sendcommand [list [dict get $response sendcommand] $socket $request $response]
-                unset request response
+                set sendcommand [dict get $response sendcommand]
             } else {
-                set sendcommand "::wibble::defaultsend $socket"
+                set sendcommand ::wibble::defaultsend
             }
 
             # Invoke the send command, and terminate or continue as requested.
-            if {[{*}$sendcommand]} {
+            if {[{*}$sendcommand $socket $request $response]} {
                 catch {chan flush $socket}
-                unset -nocomplain sendcommand request response
             } else {
                 chan close $socket
                 break
@@ -1379,7 +1371,7 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
     }
 }
 
-package provide wibble 0.4.1
+package provide wibble 0.4.2
 
 # =============================== example code ================================
 
