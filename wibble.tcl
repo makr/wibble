@@ -7,12 +7,13 @@ package require Tcl 8.6
 
 # Define the wibble namespace.
 namespace eval ::wibble {
+    variable version 0.4.3
     variable zonehandlers
 
-    # New: activate performance-enhancing features by setting these to 1.
-    # As is, default behavior is unchanged.
+    # New: Potentially save time by pre-selecting only matching handlers to be
+    # evaluated for possible response generation.
+    # Set value to 1 to activate. As is, default behavior is unchanged.
     variable prequalify_handlers 0
-    variable conserve_post_memory 0
 }
 
 # ============================== zone handlers ================================
@@ -993,8 +994,7 @@ proc ::wibble::cleanup {key script} {
 # Get an HTTP request from a client.
 proc ::wibble::getrequest {port chan peerhost peerport} {
     variable clock_seconds
-    variable conserve_post_memory
-    upvar post post
+
     # The HTTP header uses CR/LF line breaks.
     chan configure $chan -translation crlf
 
@@ -1081,23 +1081,7 @@ proc ::wibble::getrequest {port chan peerhost peerport} {
                 set beg [expr {$end + 3}]
                 set end [expr {[string first $sep $data $beg] - 1}]
             }
-
-            # New: Post data is potentially huge.  To prevent possibility of 
-            # unnecessary copying, optionally store it exclusively in local 
-            # variables one level up and store relevant stack level in state 
-            # dict.  Handlers can access post data via upvar by referencing 
-            # stored level.
-            unset data
-            if {$conserve_post_memory} {
-                set upper_level [expr [info level] - 1]
-                uplevel [list set rawpost [dict get $request rawpost]]
-                dict set request rawpost $upper_level
-                dict set request post $upper_level
-            } else {
-                dict set request post $post
-                unset post
-            }
-
+            dict set request post $post
         } text/plain {
             # Interpret text/plain POSTs.
             set post ""
@@ -1283,7 +1267,6 @@ proc ::wibble::process {port socket peerhost peerport} {
         # Main loop.
         while {1} {
             # Get request from client, then formulate a response to the request.
-
             set request [getrequest $port $socket $peerhost $peerport]
             set response [getresponse $request]
 
@@ -1297,6 +1280,7 @@ proc ::wibble::process {port socket peerhost peerport} {
             # Invoke the send command, and terminate or continue as requested.
             if {[{*}$sendcommand $socket $request $response]} {
                 catch {chan flush $socket}
+                unset request response
             } else {
                 chan close $socket
                 break
@@ -1371,7 +1355,7 @@ proc ::wibble::panic {options port socket peerhost peerport request response} {
     }
 }
 
-package provide wibble 0.4.2
+package provide wibble $::wibble::version
 
 # =============================== example code ================================
 
