@@ -2,21 +2,23 @@
 # provide, but many should. You'd have to construct the Wub domain with
 # appropriate arguments, then in the wibble::handle definition, pass an option
 # "domain $domain"
-proc wibble::wub {request response} {
-    dict with request {}
+proc ::wibble::zone::wub {state} {
+    dict with state request {}
+
     # remap some important request fields
     dict set r -uri $uri
-    dict set r -clientheaders [dict keys $request]
-    set r [dict merge $r $request [Url parse $uri 1]]
+    dict set r -clientheaders [dict keys $state request]
+    set r [dict merge $r [dict get $state request] [Url parse $uri 1]]
 
     try {
         {*}$domain do $r
     } on error {r options} {
-        return [nexthandler $request $response]
+        return
     }
 
     # remap some important result fields
+    set response [dict remove $r [dict keys $r -*]]
     dict set response content [dict get $r -content]
     dict set response status [dict get $r -code]
-    sendresponse [dict merge $response [dict remove $r [dict keys $r -*]]]
+    sendresponse $response
 }
